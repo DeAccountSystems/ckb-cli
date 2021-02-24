@@ -2,7 +2,7 @@ use ckb_hash::{blake2b_256, new_blake2b};
 use ckb_jsonrpc_types as rpc_types;
 use ckb_types::{
     bytes::{Bytes, BytesMut},
-    core::{ScriptHashType, TransactionBuilder, TransactionView},
+    core::{ScriptHashType, TransactionBuilder, TransactionView, DepType},
     h256,
     packed::{
         self, Byte32, CellDep, CellInput, CellOutput, OutPoint, Script, Transaction, WitnessArgs,
@@ -78,6 +78,65 @@ impl TxHelper {
     }
     pub fn clear_multisig_configs(&mut self) {
         self.multisig_configs.clear()
+    }
+
+
+    pub fn add_input_with_cell_deps<F: FnMut(OutPoint, bool) -> Result<CellOutput, String>>(
+        &mut self,
+        out_point: OutPoint,
+        since_absolute_epoch_opt: Option<u64>,
+        mut get_live_cell: F,
+        genesis_info: &GenesisInfo,
+        deps_trx: H256,
+        skip_check: bool,
+    ) -> Result<(), String> {
+        let lock = get_live_cell(out_point.clone(), false)?.lock();
+        check_lock_script(&lock, skip_check)?;
+
+        let since = if let Some(number) = since_absolute_epoch_opt {
+            Since::new_absolute_epoch(number).value()
+        } else {
+            let lock_arg = lock.args().raw_data();
+            if lock.code_hash() == MULTISIG_TYPE_HASH.pack() && lock_arg.len() == 28 {
+                let mut since_bytes = [0u8; 8];
+                since_bytes.copy_from_slice(&lock_arg[20..]);
+                u64::from_le_bytes(since_bytes)
+            } else {
+                0
+            }
+        };
+
+        let input = CellInput::new_builder()
+            .previous_output(out_point)
+            .since(since.pack())
+            .build();
+
+        self.transaction = self.transaction.as_advanced_builder().input(input).build();
+        let mut cell_deps: HashSet<CellDep> = HashSet::default();
+        for ((code_hash, _), _) in self.input_group(get_live_cell, skip_check)?.into_iter() {
+            let code_hash: H256 = code_hash.unpack();
+            if code_hash == SIGHASH_TYPE_HASH {
+                cell_deps.insert(genesis_info.sighash_dep());
+            } else if code_hash == MULTISIG_TYPE_HASH {
+                cell_deps.insert(genesis_info.multisig_dep());
+            } else {
+                panic!("Unexpected input code_hash: {:#x}", code_hash);
+            }
+        }
+        cell_deps.insert(CellDep::new_builder()
+            .out_point(
+                OutPoint::new(deps_trx.pack(), 0 as u32),
+            )
+            .dep_type(DepType::Code.into())
+            // .dep_type(DepType::DepGroup.into())
+            .build());
+
+        self.transaction = self
+            .transaction
+            .as_advanced_builder()
+            .set_cell_deps(cell_deps.into_iter().collect())
+            .build();
+        Ok(())
     }
 
     pub fn add_input<F: FnMut(OutPoint, bool) -> Result<CellOutput, String>>(
@@ -321,6 +380,170 @@ impl TxHelper {
                 .build()
                 .as_bytes()
                 .pack();
+        }
+        Ok(self
+            .transaction
+            .as_advanced_builder()
+            .set_witnesses(witnesses)
+            .build())
+    }
+
+    pub fn sign_inputs_with_outter_witness<C>(
+        &self,
+        mut signer: SignerFn,
+        get_live_cell: C,
+        skip_check: bool,
+        outter_witness: Vec<Bytes>,
+    ) -> Result<HashMap<Bytes, Bytes>, String>
+    where
+        C: FnMut(OutPoint, bool) -> Result<CellOutput, String>,
+    {
+
+        let all_sighash_lock_args = self
+            .multisig_configs
+            .iter()
+            .map(|(hash160, config)| (hash160.clone(), config.sighash_lock_args()))
+            .collect::<HashMap<_, _>>();
+
+        let mut witnesses = self.init_witnesses();
+        let mut l = witnesses.len();
+        for item in outter_witness {
+            witnesses.push(Bytes::new().pack());
+            let init_witness = //if witnesses[l].raw_data().is_empty() {
+                WitnessArgs::default();
+            // } else {
+            //     WitnessArgs::from_slice(witnesses[l].raw_data().as_ref())
+            //         .map_err(|err| err.to_string())?
+            // };
+            witnesses[l] = init_witness
+                .as_builder()
+                .lock(Some(item).pack())
+                .build()
+                .as_bytes()
+                .pack();
+            l = l + 1;
+        }
+
+        let input_size = self.transaction.inputs().len();
+        let mut signatures: HashMap<Bytes, Bytes> = Default::default();
+        for ((code_hash, lock_arg), idxs) in
+            self.input_group(get_live_cell, skip_check)?.into_iter()
+        {
+            if code_hash != SIGHASH_TYPE_HASH.pack() && code_hash != MULTISIG_TYPE_HASH.pack() {
+                continue;
+            }
+
+            let multisig_hash160 = H160::from_slice(&lock_arg[..20]).unwrap();
+            let lock_args = if code_hash == MULTISIG_TYPE_HASH.pack() {
+                all_sighash_lock_args
+                    .get(&multisig_hash160)
+                    .unwrap()
+                    .clone()
+            } else {
+                let mut lock_args = HashSet::default();
+                lock_args.insert(H160::from_slice(lock_arg.as_ref()).unwrap());
+                lock_args
+            };
+            if signer(&lock_args, &h256!("0x0"), &Transaction::default().into())?.is_some() {
+                let signature = build_signature(
+                    &self.transaction,
+                    input_size,
+                    &idxs,
+                    &witnesses,
+                    self.multisig_configs.get(&multisig_hash160),
+                    |message: &H256, tx: &rpc_types::Transaction| {
+                        signer(&lock_args, message, tx).map(|sig| sig.unwrap())
+                    },
+                )?;
+                signatures.insert(lock_arg, signature);
+
+            }
+        }
+        Ok(signatures)
+    }
+
+    pub fn build_tx_with_outter_witness<F: FnMut(OutPoint, bool) -> Result<CellOutput, String>>(
+        &self,
+        get_live_cell: F,
+        skip_check: bool,
+        outter_witness: Vec<Bytes>,
+    ) -> Result<TransactionView, String> {
+        let mut witnesses = self.init_witnesses();
+        let mut l = 0;
+        for ((code_hash, lock_arg), idxs) in
+            self.input_group(get_live_cell, skip_check)?.into_iter()
+        {
+            if skip_check && !self.signatures.contains_key(&lock_arg) {
+                continue;
+            }
+            let signatures = self.signatures.get(&lock_arg).ok_or_else(|| {
+                let lock_script = Script::new_builder()
+                    .hash_type(ScriptHashType::Type.into())
+                    .code_hash(code_hash.clone())
+                    .args(lock_arg.pack())
+                    .build();
+                format!(
+                    "Missing signatures for lock_hash: {:#x}",
+                    lock_script.calc_script_hash()
+                )
+            })?;
+            let lock_field = if code_hash == MULTISIG_TYPE_HASH.pack() {
+                let hash160 = H160::from_slice(&lock_arg[..20]).unwrap();
+                let multisig_config = self.multisig_configs.get(&hash160).unwrap();
+                let threshold = multisig_config.threshold() as usize;
+                let mut data = BytesMut::from(&multisig_config.to_witness_data()[..]);
+                if signatures.len() != threshold {
+                    return Err(format!(
+                        "Invalid multisig signature length for lock_arg: 0x{}, got: {}, expected: {}",
+                        hex_string(&lock_arg),
+                        signatures.len(),
+                        threshold,
+                    ));
+                }
+                for signature in signatures {
+                    data.extend_from_slice(signature.as_ref());
+                }
+                data.freeze()
+            } else {
+                if signatures.len() != 1 {
+                    return Err(format!(
+                        "Invalid secp signature length for lock_arg: 0x{}, got: {}, expected: 1",
+                        hex_string(&lock_arg),
+                        signatures.len(),
+                    ));
+                }
+                signatures.iter().last().unwrap().clone()
+            };
+
+            let init_witness = if witnesses[idxs[0]].raw_data().is_empty() {
+                WitnessArgs::default()
+            } else {
+                WitnessArgs::from_slice(witnesses[idxs[0]].raw_data().as_ref())
+                    .map_err(|err| err.to_string())?
+            };
+            l = idxs[0] + 1;
+            witnesses[idxs[0]] = init_witness
+                .as_builder()
+                .lock(Some(lock_field).pack())
+                .build()
+                .as_bytes()
+                .pack();
+        }
+        for item in outter_witness {
+            witnesses.push(Bytes::new().pack());
+            let init_witness = //if witnesses[l].raw_data().is_empty() {
+                WitnessArgs::default();
+            // } else {
+            //     WitnessArgs::from_slice(witnesses[l].raw_data().as_ref())
+            //         .map_err(|err| err.to_string())?
+            // };
+            witnesses[l] = init_witness
+                .as_builder()
+                .lock(Some(item).pack())
+                .build()
+                .as_bytes()
+                .pack();
+            l = l + 1;
         }
         Ok(self
             .transaction

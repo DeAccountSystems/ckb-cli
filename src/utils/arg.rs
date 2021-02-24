@@ -119,6 +119,21 @@ pub fn to_data<'a>() -> Arg<'a> {
         .validator(|input| HexParser.validate(input))
         .about("Hex data store in target cell (optional)")
 }
+pub fn cell_deps<'a>() -> Arg<'a> {
+    Arg::with_name("cell-deps")
+        .long("cell-deps")
+        .takes_value(true)
+        .validator(|input| FixedHashParser::<H256>::default().validate(input))
+        .about("Trx hash which cell-deps pointed to (optional)")
+}
+
+pub fn type_script<'a>() -> Arg<'a> {
+    Arg::with_name("type-script")
+        .long("type-script")
+        .takes_value(true)
+        .validator(|input| HexParser.validate(input))
+        .about("Type script store in target cell 0 (optional)")
+}
 
 pub fn to_data_path<'a>() -> Arg<'a> {
     Arg::with_name("to-data-path")

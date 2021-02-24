@@ -10,7 +10,7 @@ use ckb_sdk::{
     wallet::{zeroize_privkey, MasterPrivKey},
     Address, AddressPayload, AddressType, CodeHashIndex, HumanCapacity, NetworkType, OldAddress,
 };
-use ckb_types::{packed::OutPoint, prelude::*, H160, H256};
+use ckb_types::{packed::OutPoint, prelude::*, H160, H256, bytes::Bytes};
 use clap::ArgMatches;
 use faster_hex::hex_decode;
 use url::Url;
@@ -150,6 +150,21 @@ impl ArgParser<Vec<u8>> for HexParser {
         hex_decode(input.as_bytes(), &mut bytes)
             .map_err(|err| format!("parse hex string failed: {:?}", err))?;
         Ok(bytes)
+    }
+}
+
+#[derive(Default)]
+pub struct OutterWitnessParser<T> {
+    _h: PhantomData<T>,
+}
+
+impl ArgParser<Bytes> for OutterWitnessParser<Bytes> {
+    fn parse(&self, input: &str) -> Result<Bytes, String> {
+        //println!("debug: {}", input);
+        let bytes = HexParser.parse(input)?;
+        // Ok(bytes)
+        Ok(Bytes::from(bytes))
+        //u8::from_slice(&bytes).map_err(|err| err.to_string())
     }
 }
 
