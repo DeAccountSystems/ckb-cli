@@ -785,16 +785,30 @@ impl<'a> WalletSubCommand<'a> {
             get_live_cell_with_cache(&mut live_cell_cache, self.rpc_client, out_point, with_data)
                 .map(|(output, _)| output)
         };
-        for info in &infos {
-            let cell_deps_clone = cell_deps_trx_opt.clone();
-            helper.add_input_with_cell_deps(
-                info.out_point(),
-                None,
-                &mut get_live_cell_fn,
-                &genesis_info,
-                cell_deps_clone,
-                skip_check,
-            )?;
+        if cell_deps_trx_opt.is_some(){
+            let cell_hash = cell_deps_trx_opt.unwrap();            
+            for info in &infos {
+                let cell_deps_clone = cell_hash.clone();
+                helper.add_input_with_cell_deps(
+                    info.out_point(),
+                    None,
+                    &mut get_live_cell_fn,
+                    &genesis_info,
+                    cell_deps_clone,
+                    skip_check,
+                )?;
+            }
+        }
+        else {
+            for info in &infos {
+                helper.add_input(
+                    info.out_point(),
+                    None,
+                    &mut get_live_cell_fn,
+                    &genesis_info,
+                    skip_check,
+                )?;
+            }
         }
 
         // Add outputs
@@ -856,6 +870,11 @@ impl<'a> WalletSubCommand<'a> {
             helper.add_signature(lock_arg, signature)?;
         }
         let tx = helper.build_tx_with_outter_witness(&mut get_live_cell_fn, skip_check, outter_witness_copy)?;
+        let tx_clone = tx.clone();
+        let rpc_tx_view = json_types::TransactionView::from(tx_clone);
+        let mut value = serde_json::to_value(rpc_tx_view).unwrap();
+        value["outputs_data"].take();
+        println!("tx raw: {}", serde_json::to_string_pretty(&value).unwrap());
         let tx_hash = self
             .rpc_client
             .send_transaction(tx.data())
@@ -965,7 +984,6 @@ impl<'a> CliSubCommand for WalletSubCommand<'a> {
                 let outter_witness = get_outter_witness(m)?;
                 let cell_deps_opt: Option<H256> =
                     FixedHashParser::<H256>::default().from_matches_opt(m, "cell-deps", false)?;
-                let cell_hash = cell_deps_opt.unwrap();
                 let args = TransferWithOutterWitnessArgs {
                     privkey_path: m.value_of("privkey-path").map(|s| s.to_string()),
                     from_account: m.value_of("from-account").map(|s| s.to_string()),
@@ -986,7 +1004,7 @@ impl<'a> CliSubCommand for WalletSubCommand<'a> {
                     skip_check_to_address: m.is_present("skip-check-to-address"),
                     outter_witness: outter_witness,
                     type_script_opt: Some(type_script_opt),
-                    cell_deps_trx_opt: cell_hash,
+                    cell_deps_trx_opt: cell_deps_opt,
                 };
                 let tx = self.transfer_outter_witness(args, false)?;
                 if debug {
@@ -1296,7 +1314,7 @@ pub struct TransferWithOutterWitnessArgs {
     pub skip_check_to_address: bool,
     pub outter_witness: Vec<Bytes>,
     pub type_script_opt: Option<Bytes>,
-    pub cell_deps_trx_opt: H256,
+    pub cell_deps_trx_opt: Option<H256>,
     
 }
 

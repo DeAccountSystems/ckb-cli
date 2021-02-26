@@ -409,18 +409,7 @@ impl TxHelper {
         let mut l = witnesses.len();
         for item in outter_witness {
             witnesses.push(Bytes::new().pack());
-            let init_witness = //if witnesses[l].raw_data().is_empty() {
-                WitnessArgs::default();
-            // } else {
-            //     WitnessArgs::from_slice(witnesses[l].raw_data().as_ref())
-            //         .map_err(|err| err.to_string())?
-            // };
-            witnesses[l] = init_witness
-                .as_builder()
-                .lock(Some(item).pack())
-                .build()
-                .as_bytes()
-                .pack();
+            witnesses[l] = item.pack();
             l = l + 1;
         }
 
@@ -469,7 +458,6 @@ impl TxHelper {
         outter_witness: Vec<Bytes>,
     ) -> Result<TransactionView, String> {
         let mut witnesses = self.init_witnesses();
-        let mut l = 0;
         for ((code_hash, lock_arg), idxs) in
             self.input_group(get_live_cell, skip_check)?.into_iter()
         {
@@ -521,7 +509,6 @@ impl TxHelper {
                 WitnessArgs::from_slice(witnesses[idxs[0]].raw_data().as_ref())
                     .map_err(|err| err.to_string())?
             };
-            l = idxs[0] + 1;
             witnesses[idxs[0]] = init_witness
                 .as_builder()
                 .lock(Some(lock_field).pack())
@@ -529,22 +516,13 @@ impl TxHelper {
                 .as_bytes()
                 .pack();
         }
+        let mut l = witnesses.len();
         for item in outter_witness {
             witnesses.push(Bytes::new().pack());
-            let init_witness = //if witnesses[l].raw_data().is_empty() {
-                WitnessArgs::default();
-            // } else {
-            //     WitnessArgs::from_slice(witnesses[l].raw_data().as_ref())
-            //         .map_err(|err| err.to_string())?
-            // };
-            witnesses[l] = init_witness
-                .as_builder()
-                .lock(Some(item).pack())
-                .build()
-                .as_bytes()
-                .pack();
+            witnesses[l] = item.pack();
             l = l + 1;
         }
+        // println!("witnesses: {:#?}", witnesses);
         Ok(self
             .transaction
             .as_advanced_builder()
