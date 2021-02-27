@@ -144,6 +144,7 @@ impl<'a> WalletSubCommand<'a> {
                     .arg(arg::to_address().required(true))
                     .arg(arg::to_data())
                     .arg(arg::cell_deps())
+                    .arg(arg::cell_input())
                     .arg(arg::to_data_path())
                     .arg(arg::type_script())
                     .arg(arg::capacity().required(true))
@@ -548,6 +549,7 @@ impl<'a> WalletSubCommand<'a> {
             outter_witness,
             type_script_opt,
             cell_deps_trx_opt,
+            cell_input_trx_opt,
         } = args;
 
         let network_type = get_network_type(self.rpc_client)?;
@@ -721,6 +723,16 @@ impl<'a> WalletSubCommand<'a> {
         let mut from_capacity = 0;
         let mut infos: Vec<LiveCellInfo> = Default::default();
 
+        if cell_input_trx_opt.is_some() {
+
+            let cell_hash = cell_input_trx_opt.unwrap(); 
+            let live_cell = self.with_db(|db| {
+                db.get_live_cell_by_tx_hash(cell_hash, 0 as u32)
+            })?;
+            from_capacity += live_cell.capacity;
+            infos.push(live_cell);
+        }
+        
         fn enough_capacity(from_capacity: u64, to_capacity: u64, tx_fee: u64) -> bool {
             if from_capacity < to_capacity + tx_fee {
                 false
@@ -984,6 +996,8 @@ impl<'a> CliSubCommand for WalletSubCommand<'a> {
                 let outter_witness = get_outter_witness(m)?;
                 let cell_deps_opt: Option<H256> =
                     FixedHashParser::<H256>::default().from_matches_opt(m, "cell-deps", false)?;
+                let cell_input_opt: Option<H256> =
+                    FixedHashParser::<H256>::default().from_matches_opt(m, "cell-input", false)?;
                 let args = TransferWithOutterWitnessArgs {
                     privkey_path: m.value_of("privkey-path").map(|s| s.to_string()),
                     from_account: m.value_of("from-account").map(|s| s.to_string()),
@@ -1005,6 +1019,7 @@ impl<'a> CliSubCommand for WalletSubCommand<'a> {
                     outter_witness: outter_witness,
                     type_script_opt: Some(type_script_opt),
                     cell_deps_trx_opt: cell_deps_opt,
+                    cell_input_trx_opt: cell_input_opt,
                 };
                 let tx = self.transfer_outter_witness(args, false)?;
                 if debug {
@@ -1315,7 +1330,7 @@ pub struct TransferWithOutterWitnessArgs {
     pub outter_witness: Vec<Bytes>,
     pub type_script_opt: Option<Bytes>,
     pub cell_deps_trx_opt: Option<H256>,
-    
+    pub cell_input_trx_opt: Option<H256>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

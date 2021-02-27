@@ -127,6 +127,14 @@ pub fn cell_deps<'a>() -> Arg<'a> {
         .about("Trx hash which cell-deps pointed to (optional)")
 }
 
+pub fn cell_input<'a>() -> Arg<'a> {
+    Arg::with_name("cell-input")
+        .long("cell-input")
+        .takes_value(true)
+        .validator(|input| FixedHashParser::<H256>::default().validate(input))
+        .about("The first output in the tx hash will be one of the inputs")
+}
+
 pub fn type_script<'a>() -> Arg<'a> {
     Arg::with_name("type-script")
         .long("type-script")

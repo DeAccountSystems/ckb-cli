@@ -10,6 +10,7 @@ use ckb_types::{
     core::{BlockView, HeaderView},
     packed::{Byte32, Header, OutPoint, Script},
     prelude::*,
+    H256,
 };
 use rocksdb::{ColumnFamily, DB};
 
@@ -225,6 +226,26 @@ impl<'a> IndexDatabase<'a> {
         let key_prefix = Key::CodeLiveCellIndexPrefix(code_hash.unpack(), None);
         let key_start = Key::CodeLiveCellIndexPrefix(code_hash.unpack(), from_number);
         self.get_live_cell_infos(key_prefix, key_start, terminator)
+    }
+
+    pub fn get_live_cell_by_tx_hash(
+        &self,
+        tx_hash: H256,
+        index: u32,
+    ) -> LiveCellInfo {
+        fn get_live_cell_info(reader: &RocksReader, out_point: OutPoint) -> Option<LiveCellInfo> {
+            reader
+                .get(&Key::LiveCellMap(out_point).to_bytes())
+                .map(|bytes| bincode::deserialize(&bytes).unwrap())
+        }
+
+        let reader = RocksReader::new(self.db, self.cf);
+
+        
+        let out_point = OutPoint::new(tx_hash.pack(), index);
+        let live_cell_info = get_live_cell_info(&reader, out_point).unwrap();
+     
+        live_cell_info
     }
 
     pub fn get_live_cell_infos<F: FnMut(usize, &LiveCellInfo) -> (bool, bool)>(
