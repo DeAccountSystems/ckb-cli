@@ -318,6 +318,14 @@ pub fn get_type_script(m: &ArgMatches) -> Result<Bytes, String> {
     }
 }
 
+pub fn get_lock_script(m: &ArgMatches) -> Result<Bytes, String> {
+    let lock_script_opt: Option<Bytes> = HexParser.from_matches_opt(m, "lock-script", false)?;
+    match lock_script_opt {
+        Some(data) => Ok(data),
+        None => Ok(Bytes::new())
+    }
+}
+
 pub fn get_to_data(m: &ArgMatches) -> Result<Bytes, String> {
     let to_data_opt: Option<Bytes> = HexParser.from_matches_opt(m, "to-data", false)?;
     match to_data_opt {

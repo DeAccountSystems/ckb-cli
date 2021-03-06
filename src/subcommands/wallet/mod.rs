@@ -27,7 +27,7 @@ use crate::utils::{
     index::{with_db, IndexController},
     other::{
         check_capacity, get_address, get_arg_value, get_live_cell_with_cache,
-        get_max_mature_number, get_network_type, get_privkey_signer, get_to_data, is_mature, get_outter_witness, get_type_script,
+        get_max_mature_number, get_network_type, get_privkey_signer, get_to_data, is_mature, get_outter_witness, get_type_script, get_lock_script,
         read_password, sync_to_tip,
     },
 };
@@ -147,6 +147,7 @@ impl<'a> WalletSubCommand<'a> {
                     .arg(arg::cell_input())
                     .arg(arg::to_data_path())
                     .arg(arg::type_script())
+                    .arg(arg::lock_script())
                     .arg(arg::capacity().required(true))
                     .arg(arg::tx_fee().required(true))
                     .arg(arg::derive_receiving_address_length())
@@ -548,7 +549,8 @@ impl<'a> WalletSubCommand<'a> {
             skip_check_to_address,
             outter_witness,
             type_script_opt,
-            cell_deps_trx_opt,
+            lock_script_opt,
+            cell_deps_trx_vec,
             cell_input_trx_opt,
         } = args;
 
@@ -797,16 +799,15 @@ impl<'a> WalletSubCommand<'a> {
             get_live_cell_with_cache(&mut live_cell_cache, self.rpc_client, out_point, with_data)
                 .map(|(output, _)| output)
         };
-        if cell_deps_trx_opt.is_some(){
-            let cell_hash = cell_deps_trx_opt.unwrap();            
+        if cell_deps_trx_vec.len() > 0 {
             for info in &infos {
-                let cell_deps_clone = cell_hash.clone();
+                let cell_deps_trx_vec_clone = cell_deps_trx_vec.clone();
                 helper.add_input_with_cell_deps(
                     info.out_point(),
                     None,
                     &mut get_live_cell_fn,
                     &genesis_info,
-                    cell_deps_clone,
+                    cell_deps_trx_vec_clone,
                     skip_check,
                 )?;
             }
@@ -844,15 +845,39 @@ impl<'a> WalletSubCommand<'a> {
                     .build(),
             )
         } else {
-            if let Some(type_script_opt) = type_script_opt { Some(Script::new_unchecked(type_script_opt)) } 
+            if let Some(type_script_opt) = type_script_opt { 
+                if type_script_opt.len() > 0 {
+                    Some(Script::new_unchecked(type_script_opt)) 
+                }
+                else { None}
+                } 
             else { None }
             // None
         };
-        let to_output = CellOutput::new_builder()
+
+        let lock_script = if let Some(lock_script_opt) = lock_script_opt { 
+            if lock_script_opt.len() > 0 {
+                Some(Script::new_unchecked(lock_script_opt)) 
+            }
+            else { None}
+        } 
+        else { None };
+
+        let to_output = if let Some(lock_script) = lock_script {
+            CellOutput::new_builder()
+            .capacity(Capacity::shannons(to_capacity).pack())
+            .lock(lock_script)
+            .type_(ScriptOpt::new_builder().set(type_script).build())
+            .build()
+        }
+        else {
+            CellOutput::new_builder()
             .capacity(Capacity::shannons(to_capacity).pack())
             .lock(to_address.payload().into())
             .type_(ScriptOpt::new_builder().set(type_script).build())
-            .build();
+            .build()
+        };
+
         helper.add_output(to_output, to_data);
         if rest_capacity >= MIN_SECP_CELL_CAPACITY {
             let change_output = CellOutput::new_builder()
@@ -993,9 +1018,10 @@ impl<'a> CliSubCommand for WalletSubCommand<'a> {
             ("deploy", Some(m)) => {
                 let to_data = get_to_data(m)?;
                 let type_script_opt = get_type_script(m)?;
+                let lock_script_opt = get_lock_script(m)?;
                 let outter_witness = get_outter_witness(m)?;
-                let cell_deps_opt: Option<H256> =
-                    FixedHashParser::<H256>::default().from_matches_opt(m, "cell-deps", false)?;
+                let cell_deps_vec: Vec<H256> =
+                    FixedHashParser::<H256>::default().from_matches_vec(m, "cell-deps")?;
                 let cell_input_opt: Option<H256> =
                     FixedHashParser::<H256>::default().from_matches_opt(m, "cell-input", false)?;
                 let args = TransferWithOutterWitnessArgs {
@@ -1018,7 +1044,8 @@ impl<'a> CliSubCommand for WalletSubCommand<'a> {
                     skip_check_to_address: m.is_present("skip-check-to-address"),
                     outter_witness: outter_witness,
                     type_script_opt: Some(type_script_opt),
-                    cell_deps_trx_opt: cell_deps_opt,
+                    lock_script_opt: Some(lock_script_opt),
+                    cell_deps_trx_vec: cell_deps_vec,
                     cell_input_trx_opt: cell_input_opt,
                 };
                 let tx = self.transfer_outter_witness(args, false)?;
@@ -1329,7 +1356,8 @@ pub struct TransferWithOutterWitnessArgs {
     pub skip_check_to_address: bool,
     pub outter_witness: Vec<Bytes>,
     pub type_script_opt: Option<Bytes>,
-    pub cell_deps_trx_opt: Option<H256>,
+    pub lock_script_opt: Option<Bytes>,
+    pub cell_deps_trx_vec: Vec<H256>,
     pub cell_input_trx_opt: Option<H256>,
 }
 

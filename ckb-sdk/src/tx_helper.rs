@@ -87,7 +87,7 @@ impl TxHelper {
         since_absolute_epoch_opt: Option<u64>,
         mut get_live_cell: F,
         genesis_info: &GenesisInfo,
-        deps_trx: H256,
+        deps_trx: Vec<H256>,
         skip_check: bool,
     ) -> Result<(), String> {
         let lock = get_live_cell(out_point.clone(), false)?.lock();
@@ -123,13 +123,16 @@ impl TxHelper {
                 panic!("Unexpected input code_hash: {:#x}", code_hash);
             }
         }
-        cell_deps.insert(CellDep::new_builder()
-            .out_point(
-                OutPoint::new(deps_trx.pack(), 0 as u32),
-            )
-            .dep_type(DepType::Code.into())
-            // .dep_type(DepType::DepGroup.into())
-            .build());
+        for tmp_trx in deps_trx {
+            cell_deps.insert(CellDep::new_builder()
+                .out_point(
+                    OutPoint::new(tmp_trx.pack(), 0 as u32),
+                )
+                .dep_type(DepType::Code.into())
+                // .dep_type(DepType::DepGroup.into())
+                .build());
+        } 
+        
 
         self.transaction = self
             .transaction
