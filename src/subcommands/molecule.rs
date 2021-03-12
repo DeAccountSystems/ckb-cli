@@ -25,6 +25,10 @@ impl MoleculeSubCommand {
             .takes_value(true)
             .required(true)
             .about("The molecule type name defined in blockchain.mol (and extra OutPointVec)");
+        let arg_json_str = Arg::with_name("json-str")
+            .long("json-str")
+            .takes_value(true)
+            .about("The str json dump to");
         let arg_binary_hex = Arg::with_name("binary-hex")
             .long("binary-hex")
             .takes_value(true)
@@ -35,7 +39,6 @@ impl MoleculeSubCommand {
         let arg_json_path = Arg::with_name("json-path")
             .long("json-path")
             .takes_value(true)
-            .required(true)
             .validator(|input| FilePathParser::new(true).validate(input));
         let arg_serialize_output_type = Arg::with_name("output-type")
             .long("output-type")
@@ -54,6 +57,7 @@ impl MoleculeSubCommand {
                 App::new("encode")
                     .about("Encode molecule type from json to binary")
                     .arg(arg_type.clone())
+                    .arg(arg_json_str.clone())
                     .arg(arg_json_path.clone())
                     .arg(arg_serialize_output_type),
                 App::new("default")
@@ -131,57 +135,64 @@ impl CliSubCommand for MoleculeSubCommand {
             }
             ("encode", Some(m)) => {
                 let type_name = m.value_of("type").unwrap();
+                let json_obj = m.value_of("json-str");
                 let output_type = m.value_of("output-type").unwrap();
-                let json_path: PathBuf = FilePathParser::new(true).from_matches(m, "json-path")?;
-                let content = fs::read_to_string(json_path).map_err(|err| err.to_string())?;
-
+                let content_as_strr = if let Some(json_obj) = json_obj {
+                    json_obj.to_string()
+                }
+                else {
+                    let json_path: PathBuf = FilePathParser::new(true).from_matches(m, "json-path")?;
+                    let content = fs::read_to_string(json_path).map_err(|err| err.to_string())?;
+                    content.clone().to_string()
+                };
+                let content_as_str = &content_as_strr;
                 let binary_result = match type_name {
                     "Script" => {
-                        encode_from_json::<packed::Script, json_types::Script>(content.as_str())
+                        encode_from_json::<packed::Script, json_types::Script>(content_as_str)
                     }
                     "OutPoint" => {
-                        encode_from_json::<packed::OutPoint, json_types::OutPoint>(content.as_str())
+                        encode_from_json::<packed::OutPoint, json_types::OutPoint>(content_as_str)
                     }
                     "CellInput" => encode_from_json::<packed::CellInput, json_types::CellInput>(
-                        content.as_str(),
+                        content_as_str,
                     ),
                     "CellOutput" => encode_from_json::<packed::CellOutput, json_types::CellOutput>(
-                        content.as_str(),
+                        content_as_str,
                     ),
                     "CellDep" => {
-                        encode_from_json::<packed::CellDep, json_types::CellDep>(content.as_str())
+                        encode_from_json::<packed::CellDep, json_types::CellDep>(content_as_str)
                     }
                     "RawTransaction" => {
-                        encode_from_json::<packed::RawTransaction, RawTransaction>(content.as_str())
+                        encode_from_json::<packed::RawTransaction, RawTransaction>(content_as_str)
                     }
                     "Transaction" => {
                         encode_from_json::<packed::Transaction, json_types::Transaction>(
-                            content.as_str(),
+                            content_as_str,
                         )
                     }
                     "RawHeader" => {
-                        encode_from_json::<packed::RawHeader, RawHeader>(content.as_str())
+                        encode_from_json::<packed::RawHeader, RawHeader>(content_as_str)
                     }
                     "Header" => {
-                        encode_from_json::<packed::Header, json_types::Header>(content.as_str())
+                        encode_from_json::<packed::Header, json_types::Header>(content_as_str)
                     }
                     "UncleBlock" => encode_from_json::<packed::UncleBlock, json_types::UncleBlock>(
-                        content.as_str(),
+                        content_as_str,
                     ),
                     "Block" => {
-                        encode_from_json::<packed::Block, json_types::Block>(content.as_str())
+                        encode_from_json::<packed::Block, json_types::Block>(content_as_str)
                     }
                     "CellbaseWitness" => {
                         encode_from_json::<packed::CellbaseWitness, CellbaseWitness>(
-                            content.as_str(),
+                            content_as_str,
                         )
                     }
                     "WitnessArgs" => {
-                        encode_from_json::<packed::WitnessArgs, WitnessArgs>(content.as_str())
+                        encode_from_json::<packed::WitnessArgs, WitnessArgs>(content_as_str)
                     }
                     // In extensions.mol
                     "OutPointVec" => {
-                        encode_from_json::<packed::OutPointVec, OutPoints>(content.as_str())
+                        encode_from_json::<packed::OutPointVec, OutPoints>(content_as_str)
                     }
                     _ => Err(format!("Unsupported molecule type name: {}", type_name)),
                 };
