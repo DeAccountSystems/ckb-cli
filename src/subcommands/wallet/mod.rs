@@ -529,7 +529,7 @@ impl<'a> WalletSubCommand<'a> {
         Ok(tx)
     }
 
-    pub fn transfer_outter_witness(
+    pub fn deploy_via_transfer(
         &mut self,
         args: TransferWithOutterWitnessArgs,
         skip_check: bool,
@@ -1048,7 +1048,7 @@ impl<'a> CliSubCommand for WalletSubCommand<'a> {
                     cell_deps_trx_vec: cell_deps_vec,
                     cell_input_trx_opt: cell_input_opt,
                 };
-                let tx = self.transfer_outter_witness(args, false)?;
+                let tx = self.deploy_via_transfer(args, false)?;
                 if debug {
                     let rpc_tx_view = json_types::TransactionView::from(tx);
                     Ok(Output::new_output(rpc_tx_view))
