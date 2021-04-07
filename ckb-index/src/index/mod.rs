@@ -228,6 +228,23 @@ impl<'a> IndexDatabase<'a> {
         self.get_live_cell_infos(key_prefix, key_start, terminator)
     }
 
+    pub fn get_live_cell_by_out_point(
+        &self,
+        out_point: OutPoint,
+    ) -> LiveCellInfo {
+        fn get_live_cell_info(reader: &RocksReader, out_point: OutPoint) -> Option<LiveCellInfo> {
+            reader
+                .get(&Key::LiveCellMap(out_point).to_bytes())
+                .map(|bytes| bincode::deserialize(&bytes).unwrap())
+        }
+
+        let reader = RocksReader::new(self.db, self.cf);
+        
+        let live_cell_info = get_live_cell_info(&reader, out_point).unwrap();
+     
+        live_cell_info
+    }
+
     pub fn get_live_cell_by_tx_hash(
         &self,
         tx_hash: H256,

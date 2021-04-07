@@ -87,7 +87,7 @@ impl TxHelper {
         since_absolute_epoch_opt: Option<u64>,
         mut get_live_cell: F,
         genesis_info: &GenesisInfo,
-        deps_trx: Vec<H256>,
+        deps_trx: Vec<OutPoint>,
         skip_check: bool,
     ) -> Result<(), String> {
         let lock = get_live_cell(out_point.clone(), false)?.lock();
@@ -119,15 +119,13 @@ impl TxHelper {
                 cell_deps.insert(genesis_info.sighash_dep());
             } else if code_hash == MULTISIG_TYPE_HASH {
                 cell_deps.insert(genesis_info.multisig_dep());
-            } else {
+            } else if !skip_check {
                 panic!("Unexpected input code_hash: {:#x}", code_hash);
             }
         }
         for tmp_trx in deps_trx {
             cell_deps.insert(CellDep::new_builder()
-                .out_point(
-                    OutPoint::new(tmp_trx.pack(), 0 as u32),
-                )
+                .out_point(tmp_trx)
                 .dep_type(DepType::Code.into())
                 // .dep_type(DepType::DepGroup.into())
                 .build());

@@ -124,15 +124,16 @@ pub fn cell_deps<'a>() -> Arg<'a> {
         .long("cell-deps")
         .takes_value(true)
         .multiple(true)
-        .validator(|input| FixedHashParser::<H256>::default().validate(input))
+        // .validator(|input| FixedHashParser::<H256>::default().validate(input))
         .about("Trx hash which cell-deps pointed to (optional)")
 }
 
 pub fn cell_input<'a>() -> Arg<'a> {
-    Arg::with_name("cell-input")
-        .long("cell-input")
+    Arg::with_name("cell-inputs")
+        .long("cell-inputs")
         .takes_value(true)
-        .validator(|input| FixedHashParser::<H256>::default().validate(input))
+        .multiple(true)
+        // .validator(|input| FixedHashParser::<H256>::default().validate(input))
         .about("The first output in the tx hash will be one of the inputs")
 }
 

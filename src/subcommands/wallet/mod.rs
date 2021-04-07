@@ -22,7 +22,7 @@ use crate::utils::{
     arg,
     arg_parser::{
         AddressParser, ArgParser, CapacityParser, FixedHashParser, FromStrParser,
-        PrivkeyPathParser, PrivkeyWrapper, OutterWitnessParser,
+        PrivkeyPathParser, PrivkeyWrapper, OutterWitnessParser, OutPointParser,
     },
     index::{with_db, IndexController},
     other::{
@@ -551,7 +551,7 @@ impl<'a> WalletSubCommand<'a> {
             type_script_opt,
             lock_script_opt,
             cell_deps_trx_vec,
-            cell_input_trx_opt,
+            cell_input_trx_vec,
         } = args;
 
         let network_type = get_network_type(self.rpc_client)?;
@@ -725,14 +725,14 @@ impl<'a> WalletSubCommand<'a> {
         let mut from_capacity = 0;
         let mut infos: Vec<LiveCellInfo> = Default::default();
 
-        if cell_input_trx_opt.is_some() {
-
-            let cell_hash = cell_input_trx_opt.unwrap(); 
-            let live_cell = self.with_db(|db| {
-                db.get_live_cell_by_tx_hash(cell_hash, 0 as u32)
-            })?;
-            from_capacity += live_cell.capacity;
-            infos.push(live_cell);
+        if cell_input_trx_vec.len() > 0 {
+            for tmp in cell_input_trx_vec {
+                let live_cell = self.with_db(|db| {
+                    db.get_live_cell_by_out_point(tmp)
+                })?;
+                from_capacity += live_cell.capacity;
+                infos.push(live_cell);
+            }
         }
         
         fn enough_capacity(from_capacity: u64, to_capacity: u64, tx_fee: u64) -> bool {
@@ -1020,10 +1020,10 @@ impl<'a> CliSubCommand for WalletSubCommand<'a> {
                 let type_script_opt = get_type_script(m)?;
                 let lock_script_opt = get_lock_script(m)?;
                 let outter_witness = get_outter_witness(m)?;
-                let cell_deps_vec: Vec<H256> =
-                    FixedHashParser::<H256>::default().from_matches_vec(m, "cell-deps")?;
-                let cell_input_opt: Option<H256> =
-                    FixedHashParser::<H256>::default().from_matches_opt(m, "cell-input", false)?;
+                // let cell_deps_vec: Vec<H256> = FixedHashParser::<H256>::default().from_matches_vec(m, "cell-deps")?;
+                let cell_deps_vec = OutPointParser.from_matches_vec(m, "cell-deps")?;
+                // let cell_input_opt: Option<H256> = FixedHashParser::<H256>::default().from_matches_opt(m, "cell-inputs", false)?;
+                let cell_input_vec = OutPointParser.from_matches_vec(m, "cell-inputs")?;
                 let args = TransferWithOutterWitnessArgs {
                     privkey_path: m.value_of("privkey-path").map(|s| s.to_string()),
                     from_account: m.value_of("from-account").map(|s| s.to_string()),
@@ -1046,9 +1046,9 @@ impl<'a> CliSubCommand for WalletSubCommand<'a> {
                     type_script_opt: Some(type_script_opt),
                     lock_script_opt: Some(lock_script_opt),
                     cell_deps_trx_vec: cell_deps_vec,
-                    cell_input_trx_opt: cell_input_opt,
+                    cell_input_trx_vec: cell_input_vec,
                 };
-                let tx = self.deploy_via_transfer(args, false)?;
+                let tx = self.deploy_via_transfer(args, true)?;
                 if debug {
                     let rpc_tx_view = json_types::TransactionView::from(tx);
                     Ok(Output::new_output(rpc_tx_view))
@@ -1357,8 +1357,9 @@ pub struct TransferWithOutterWitnessArgs {
     pub outter_witness: Vec<Bytes>,
     pub type_script_opt: Option<Bytes>,
     pub lock_script_opt: Option<Bytes>,
-    pub cell_deps_trx_vec: Vec<H256>,
-    pub cell_input_trx_opt: Option<H256>,
+    pub cell_deps_trx_vec: Vec<OutPoint>,
+    pub cell_input_trx_vec: Vec<OutPoint>,
+    // pub cell_input_trx_opt: Option<H256>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
