@@ -907,11 +907,11 @@ impl<'a> WalletSubCommand<'a> {
             helper.add_signature(lock_arg, signature)?;
         }
         let tx = helper.build_tx_with_outter_witness(&mut get_live_cell_fn, skip_check, outter_witness_copy)?;
-        let tx_clone = tx.clone();
-        let rpc_tx_view = json_types::TransactionView::from(tx_clone);
-        let mut value = serde_json::to_value(rpc_tx_view).unwrap();
-        value["outputs_data"].take();
-        println!("tx raw: {}", serde_json::to_string_pretty(&value).unwrap());
+        // let tx_clone = tx.clone();
+        // let rpc_tx_view = json_types::TransactionView::from(tx_clone);
+        // let mut value = serde_json::to_value(rpc_tx_view).unwrap();
+        // value["outputs_data"].take();
+        // println!("tx raw: {}", serde_json::to_string_pretty(&value).unwrap());
         let tx_hash = self
             .rpc_client
             .send_transaction(tx.data())
@@ -1050,12 +1050,12 @@ impl<'a> CliSubCommand for WalletSubCommand<'a> {
                 };
                 let tx = self.deploy_via_transfer(args, true)?;
                 if debug {
-                    let rpc_tx_view = json_types::TransactionView::from(tx);
-                    Ok(Output::new_output(rpc_tx_view))
-                } else {
-                    let tx_hash: H256 = tx.hash().unpack();
-                    Ok(Output::new_output(tx_hash))
+                    let rpc_tx_view = json_types::TransactionView::from(tx.clone());
+                    println!("{}", serde_json::to_string_pretty(&rpc_tx_view).unwrap());
                 }
+                let tx_hash: H256 = tx.hash().unpack();
+                Ok(Output::new_output(tx_hash))
+                
             }
             ("transfer", Some(m)) => {
                 let to_data = get_to_data(m)?;
