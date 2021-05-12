@@ -1,7 +1,13 @@
 mod index;
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::fs;
+use std::io::Write;
+use std::str::FromStr;
+
+use ckb_jsonrpc_types::JsonBytes;
+use std::convert::TryFrom;
 
 use ckb_hash::new_blake2b;
 use ckb_jsonrpc_types as json_types;
@@ -39,7 +45,7 @@ use ckb_sdk::{
     },
     wallet::DerivationPath,
     Address, AddressPayload, GenesisInfo, HttpRpcClient, HumanCapacity, MultisigConfig, SignerFn,
-    Since, SinceType, TxHelper, SECP256K1,
+    Since, SinceType, TxHelper, SECP256K1, NetworkType, CodeHashIndex,
 };
 pub use index::start_index_thread;
 
@@ -102,6 +108,26 @@ impl<'a> WalletSubCommand<'a> {
     }
 
     pub fn subcommand() -> App<'static> {
+        let arg_sighash_address = Arg::with_name("sighash-address")
+            .long("sighash-address")
+            .takes_value(true)
+            .multiple(true)
+            .required(true)
+            .validator(|input| AddressParser::new_sighash().validate(input))
+            .about("Normal sighash address");
+        let arg_require_first_n = Arg::with_name("require-first-n")
+            .long("require-first-n")
+            .takes_value(true)
+            .default_value("0")
+            .validator(|input| FromStrParser::<u8>::default().validate(input))
+            .about("Require first n signatures of corresponding pubkey");
+        let arg_threshold = Arg::with_name("threshold")
+            .long("threshold")
+            .takes_value(true)
+            .default_value("1")
+            .validator(|input| FromStrParser::<u8>::default().validate(input))
+            .about("Multisig threshold");
+
         App::new("wallet")
             .about("Transfer / query balance (with local index) / key utils")
             .subcommands(vec![
@@ -151,6 +177,9 @@ impl<'a> WalletSubCommand<'a> {
                     .arg(arg::capacity().required(true))
                     .arg(arg::tx_fee().required(true))
                     .arg(arg::derive_receiving_address_length())
+                    .arg(arg_sighash_address.clone())
+                    .arg(arg_require_first_n.clone())
+                    .arg(arg_threshold.clone())
                     .arg(
                         arg::derive_change_address().conflicts_with(arg::privkey_path().get_name()),
                     )
@@ -162,6 +191,11 @@ impl<'a> WalletSubCommand<'a> {
                             .validator(|input| OutterWitnessParser::<Bytes>::default().validate(input))
                             .about("Add outter witness"),
                     )
+                    .arg(
+                        Arg::with_name("tx-json-path")
+                            .long("tx-json-path")
+                            .takes_value(true)
+                            .about("Write tx into file as json format"))
                     .arg(
                         Arg::with_name("skip-check-to-address")
                             .long("skip-check-to-address")
@@ -552,6 +586,10 @@ impl<'a> WalletSubCommand<'a> {
             lock_script_opt,
             cell_deps_trx_vec,
             cell_input_trx_vec,
+            tx_json_path_opt,
+            sighash_addresses,
+            require_first_n,
+            threshold,
         } = args;
 
         let network_type = get_network_type(self.rpc_client)?;
@@ -664,6 +702,16 @@ impl<'a> WalletSubCommand<'a> {
         let mut lock_hashes = vec![Script::from(&from_address_payload).calc_script_hash()];
         let mut helper = TxHelper::default();
 
+        // for multi sign
+        if threshold > 0 {
+            let sighash_addresses = sighash_addresses
+            .into_iter()
+            .map(|address| address.payload().clone())
+            .collect::<Vec<_>>();
+            let cfg = MultisigConfig::new_with(sighash_addresses, require_first_n, threshold)?;
+            helper.add_multisig_config(cfg);
+        }
+        
         let from_lock_arg = H160::from_slice(from_address.payload().args().as_ref()).unwrap();
         let mut path_map: HashMap<H160, DerivationPath> = Default::default();
         let (change_address_payload, change_path) =
@@ -900,6 +948,7 @@ impl<'a> WalletSubCommand<'a> {
                 password,
             )
         };
+        
         let outter_witness_copy = outter_witness.clone();
         for (lock_arg, signature) in
             helper.sign_inputs_with_outter_witness(signer, &mut get_live_cell_fn, skip_check, outter_witness)?
@@ -907,16 +956,23 @@ impl<'a> WalletSubCommand<'a> {
             helper.add_signature(lock_arg, signature)?;
         }
         let tx = helper.build_tx_with_outter_witness(&mut get_live_cell_fn, skip_check, outter_witness_copy)?;
-        // let tx_clone = tx.clone();
-        // let rpc_tx_view = json_types::TransactionView::from(tx_clone);
-        // let mut value = serde_json::to_value(rpc_tx_view).unwrap();
-        // value["outputs_data"].take();
-        // println!("tx raw: {}", serde_json::to_string_pretty(&value).unwrap());
-        let tx_hash = self
-            .rpc_client
-            .send_transaction(tx.data())
-            .map_err(|err| format!("Send transaction error: {}", err))?;
-        assert_eq!(tx.hash(), tx_hash.pack());
+        if let Some(tx_json_path_opt) = tx_json_path_opt {
+            let tx_path = tx_json_path_opt.as_str();
+            if tx_path.len() > 0 {
+                let network = get_network_type(self.rpc_client)?;
+                let repr = ReprTxHelper::new(helper, network);
+                let mut file = fs::File::create(tx_path).map_err(|err| err.to_string())?;
+                let content = serde_json::to_string_pretty(&repr).map_err(|err| err.to_string())?;
+                file.write_all(content.as_bytes())
+                    .map_err(|err| err.to_string())?;
+            }
+        } else {
+            let tx_hash = self
+                .rpc_client
+                .send_transaction(tx.data())
+                .map_err(|err| format!("Send transaction error: {}", err))?;
+            assert_eq!(tx.hash(), tx_hash.pack());
+        };
         Ok(tx)
     }
 
@@ -1024,6 +1080,22 @@ impl<'a> CliSubCommand for WalletSubCommand<'a> {
                 let cell_deps_vec = OutPointParser.from_matches_vec(m, "cell-deps")?;
                 // let cell_input_opt: Option<H256> = FixedHashParser::<H256>::default().from_matches_opt(m, "cell-inputs", false)?;
                 let cell_input_vec = OutPointParser.from_matches_vec(m, "cell-inputs")?;
+                
+                let tx_json_path = m.value_of("tx-json-path").unwrap_or_else(|| "");
+                if tx_json_path.len() > 0 && Path::new(tx_json_path).exists() {
+                    return Err(format!("File exists: {}", tx_json_path));
+                }
+                let tx_json_path_opt = Some(tx_json_path.to_string());
+                
+                let network = get_network_type(self.rpc_client)?;
+                let sighash_addresses: Vec<Address> = AddressParser::default()
+                    .set_network(network)
+                    .set_short(CodeHashIndex::Sighash)
+                    .from_matches_vec(m, "sighash-address")?;
+                let require_first_n: u8 =
+                    FromStrParser::<u8>::default().from_matches(m, "require-first-n")?;
+                let threshold: u8 = FromStrParser::<u8>::default().from_matches(m, "threshold")?;
+
                 let args = TransferWithOutterWitnessArgs {
                     privkey_path: m.value_of("privkey-path").map(|s| s.to_string()),
                     from_account: m.value_of("from-account").map(|s| s.to_string()),
@@ -1047,6 +1119,10 @@ impl<'a> CliSubCommand for WalletSubCommand<'a> {
                     lock_script_opt: Some(lock_script_opt),
                     cell_deps_trx_vec: cell_deps_vec,
                     cell_input_trx_vec: cell_input_vec,
+                    tx_json_path_opt: tx_json_path_opt,
+                    sighash_addresses: sighash_addresses,
+                    require_first_n: require_first_n,
+                    threshold: threshold,
                 };
                 let tx = self.deploy_via_transfer(args, true)?;
                 if debug {
@@ -1359,7 +1435,10 @@ pub struct TransferWithOutterWitnessArgs {
     pub lock_script_opt: Option<Bytes>,
     pub cell_deps_trx_vec: Vec<OutPoint>,
     pub cell_input_trx_vec: Vec<OutPoint>,
-    // pub cell_input_trx_opt: Option<H256>,
+    pub tx_json_path_opt: Option<String>,
+    pub sighash_addresses: Vec<Address>,
+    pub require_first_n: u8,
+    pub threshold: u8,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1373,4 +1452,114 @@ pub struct LiveCells {
 pub struct LiveCell {
     pub info: LiveCellInfo,
     pub mature: bool,
+}
+
+#[derive(Clone, Default, Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(deny_unknown_fields)]
+struct ReprTxHelper {
+    transaction: json_types::Transaction,
+    multisig_configs: HashMap<H160, ReprMultisigConfig>,
+    signatures: HashMap<JsonBytes, Vec<JsonBytes>>,
+}
+
+impl ReprTxHelper {
+    fn new(tx: TxHelper, network: NetworkType) -> Self {
+        ReprTxHelper {
+            transaction: tx.transaction().data().into(),
+            multisig_configs: tx
+                .multisig_configs()
+                .iter()
+                .map(|(lock_arg, cfg)| {
+                    (
+                        lock_arg.clone(),
+                        ReprMultisigConfig::new(cfg.clone(), network),
+                    )
+                })
+                .collect(),
+            signatures: tx
+                .signatures()
+                .iter()
+                .map(|(lock_arg, signatures)| {
+                    (
+                        JsonBytes::from_bytes(lock_arg.clone()),
+                        signatures
+                            .iter()
+                            .cloned()
+                            .map(JsonBytes::from_bytes)
+                            .collect(),
+                    )
+                })
+                .collect(),
+        }
+    }
+}
+
+impl TryFrom<ReprTxHelper> for TxHelper {
+    type Error = String;
+    fn try_from(repr: ReprTxHelper) -> Result<Self, Self::Error> {
+        let transaction = packed::Transaction::from(repr.transaction).into_view();
+        let multisig_configs = repr
+            .multisig_configs
+            .into_iter()
+            .map(|(_, repr_cfg)| MultisigConfig::try_from(repr_cfg))
+            .collect::<Result<Vec<_>, String>>()?;
+        let signatures: HashMap<Bytes, HashSet<Bytes>> = repr
+            .signatures
+            .into_iter()
+            .map(|(lock_arg, signatures)| {
+                (
+                    lock_arg.into_bytes(),
+                    signatures.into_iter().map(JsonBytes::into_bytes).collect(),
+                )
+            })
+            .collect();
+
+        let mut tx_helper = TxHelper::new(transaction);
+        for cfg in multisig_configs {
+            tx_helper.add_multisig_config(cfg);
+        }
+        for (lock_arg, sub_signatures) in signatures {
+            for sub_signature in sub_signatures {
+                tx_helper.add_signature(lock_arg.clone(), sub_signature)?;
+            }
+        }
+        Ok(tx_helper)
+    }
+}
+
+#[derive(Clone, Default, Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(deny_unknown_fields)]
+struct ReprMultisigConfig {
+    sighash_addresses: Vec<String>,
+    require_first_n: u8,
+    threshold: u8,
+}
+
+impl ReprMultisigConfig {
+    fn new(cfg: MultisigConfig, network: NetworkType) -> Self {
+        let sighash_addresses = cfg
+            .sighash_addresses()
+            .iter()
+            .map(|payload| Address::new(network, payload.clone()).to_string())
+            .collect();
+        ReprMultisigConfig {
+            sighash_addresses,
+            require_first_n: cfg.require_first_n(),
+            threshold: cfg.threshold(),
+        }
+    }
+}
+
+impl TryFrom<ReprMultisigConfig> for MultisigConfig {
+    type Error = String;
+    fn try_from(repr: ReprMultisigConfig) -> Result<Self, Self::Error> {
+        let sighash_addresses = repr
+            .sighash_addresses
+            .into_iter()
+            .map(|address_string| {
+                Address::from_str(&address_string).map(|addr| addr.payload().clone())
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        MultisigConfig::new_with(sighash_addresses, repr.require_first_n, repr.threshold)
+    }
 }

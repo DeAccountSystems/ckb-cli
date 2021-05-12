@@ -286,7 +286,7 @@ impl TxHelper {
         for ((code_hash, lock_arg), idxs) in
             self.input_group(get_live_cell, skip_check)?.into_iter()
         {
-            if code_hash != SIGHASH_TYPE_HASH.pack() && code_hash != MULTISIG_TYPE_HASH.pack() {
+            if code_hash != SIGHASH_TYPE_HASH.pack() && code_hash != MULTISIG_TYPE_HASH.pack() && !skip_check{
                 continue;
             }
 
@@ -481,7 +481,7 @@ impl TxHelper {
                 let multisig_config = self.multisig_configs.get(&hash160).unwrap();
                 let threshold = multisig_config.threshold() as usize;
                 let mut data = BytesMut::from(&multisig_config.to_witness_data()[..]);
-                if signatures.len() != threshold {
+                if !skip_check && signatures.len() != threshold {
                     return Err(format!(
                         "Invalid multisig signature length for lock_arg: 0x{}, got: {}, expected: {}",
                         hex_string(&lock_arg),
