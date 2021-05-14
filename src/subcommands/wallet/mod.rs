@@ -112,7 +112,6 @@ impl<'a> WalletSubCommand<'a> {
             .long("sighash-address")
             .takes_value(true)
             .multiple(true)
-            .required(true)
             .validator(|input| AddressParser::new_sighash().validate(input))
             .about("Normal sighash address");
         let arg_require_first_n = Arg::with_name("require-first-n")
@@ -124,7 +123,7 @@ impl<'a> WalletSubCommand<'a> {
         let arg_threshold = Arg::with_name("threshold")
             .long("threshold")
             .takes_value(true)
-            .default_value("1")
+            .default_value("0")
             .validator(|input| FromStrParser::<u8>::default().validate(input))
             .about("Multisig threshold");
 
@@ -956,9 +955,11 @@ impl<'a> WalletSubCommand<'a> {
             helper.add_signature(lock_arg, signature)?;
         }
         let tx = helper.build_tx_with_outter_witness(&mut get_live_cell_fn, skip_check, outter_witness_copy)?;
+        let mut should_send_tx = 1;
         if let Some(tx_json_path_opt) = tx_json_path_opt {
             let tx_path = tx_json_path_opt.as_str();
             if tx_path.len() > 0 {
+                should_send_tx = 0;
                 let network = get_network_type(self.rpc_client)?;
                 let repr = ReprTxHelper::new(helper, network);
                 let mut file = fs::File::create(tx_path).map_err(|err| err.to_string())?;
@@ -966,7 +967,8 @@ impl<'a> WalletSubCommand<'a> {
                 file.write_all(content.as_bytes())
                     .map_err(|err| err.to_string())?;
             }
-        } else {
+        } 
+        if should_send_tx == 1 {
             let tx_hash = self
                 .rpc_client
                 .send_transaction(tx.data())
