@@ -1084,9 +1084,9 @@ impl<'a> CliSubCommand for WalletSubCommand<'a> {
                 let cell_input_vec = OutPointParser.from_matches_vec(m, "cell-inputs")?;
                 
                 let tx_json_path = m.value_of("tx-json-path").unwrap_or_else(|| "");
-                if tx_json_path.len() > 0 && Path::new(tx_json_path).exists() {
-                    return Err(format!("File exists: {}", tx_json_path));
-                }
+                // if tx_json_path.len() > 0 && Path::new(tx_json_path).exists() {
+                //     return Err(format!("File exists: {}", tx_json_path));
+                // }
                 let tx_json_path_opt = Some(tx_json_path.to_string());
                 
                 let network = get_network_type(self.rpc_client)?;
