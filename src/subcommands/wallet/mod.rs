@@ -1,7 +1,7 @@
 mod index;
 
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 use std::fs;
 use std::io::Write;
 use std::str::FromStr;

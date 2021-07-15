@@ -309,6 +309,7 @@ impl TxHelper {
                     &witnesses,
                     self.multisig_configs.get(&multisig_hash160),
                     |message: &H256, tx: &rpc_types::Transaction| {
+                        println!("digest-message: {}", message);
                         signer(&lock_args, message, tx).map(|sig| sig.unwrap())
                     },
                 )?;
@@ -442,6 +443,7 @@ impl TxHelper {
                     &witnesses,
                     self.multisig_configs.get(&multisig_hash160),
                     |message: &H256, tx: &rpc_types::Transaction| {
+                        println!("digest-message: {}", message);
                         signer(&lock_args, message, tx).map(|sig| sig.unwrap())
                     },
                 )?;
