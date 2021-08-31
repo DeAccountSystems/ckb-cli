@@ -309,7 +309,6 @@ impl TxHelper {
                     &witnesses,
                     self.multisig_configs.get(&multisig_hash160),
                     |message: &H256, tx: &rpc_types::Transaction| {
-                        println!("digest-message: {}", message);
                         signer(&lock_args, message, tx).map(|sig| sig.unwrap())
                     },
                 )?;
@@ -414,7 +413,6 @@ impl TxHelper {
             witnesses[l] = item.pack();
             l = l + 1;
         }
-
         let input_size = self.transaction.inputs().len();
         let mut signatures: HashMap<Bytes, Bytes> = Default::default();
         for ((code_hash, lock_arg), idxs) in
@@ -443,7 +441,6 @@ impl TxHelper {
                     &witnesses,
                     self.multisig_configs.get(&multisig_hash160),
                     |message: &H256, tx: &rpc_types::Transaction| {
-                        println!("digest-message: {}", message);
                         signer(&lock_args, message, tx).map(|sig| sig.unwrap())
                     },
                 )?;
@@ -455,7 +452,7 @@ impl TxHelper {
     }
 
     pub fn build_tx_with_outter_witness<F: FnMut(OutPoint, bool) -> Result<CellOutput, String>>(
-        &self,
+        &mut self,
         get_live_cell: F,
         skip_check: bool,
         outter_witness: Vec<Bytes>,
@@ -526,11 +523,14 @@ impl TxHelper {
             l = l + 1;
         }
         // println!("witnesses: {:#?}", witnesses);
-        Ok(self
+
+        self.transaction = self
             .transaction
             .as_advanced_builder()
             .set_witnesses(witnesses)
-            .build())
+            .build();
+        let tmp: TransactionView = self.transaction().clone();
+        Ok(tmp)
     }
 
     pub fn check_tx<F: FnMut(OutPoint, bool) -> Result<CellOutput, String>>(
@@ -746,7 +746,9 @@ pub fn build_signature<
             .map_err(|err| err.to_string())?
     };
 
+    let d_msg_type: &str;
     let init_witness = if let Some(multisig_config) = multisig_config_opt {
+        d_msg_type = "multi";
         let lock_without_sig = {
             let sig_len = (multisig_config.threshold() as usize) * SECP_SIGNATURE_SIZE;
             let mut data = BytesMut::from(&multisig_config.to_witness_data()[..]);
@@ -758,12 +760,12 @@ pub fn build_signature<
             .lock(Some(lock_without_sig).pack())
             .build()
     } else {
+        d_msg_type = "individual";
         init_witness
             .as_builder()
             .lock(Some(Bytes::from(vec![0u8; SECP_SIGNATURE_SIZE])).pack())
             .build()
     };
-
     let mut blake2b = new_blake2b();
     blake2b.update(tx.hash().as_slice());
     blake2b.update(&(init_witness.as_bytes().len() as u64).to_le_bytes());
@@ -786,6 +788,7 @@ pub fn build_signature<
         .as_advanced_builder()
         .set_witnesses(new_witnesses)
         .build();
+    println!("{} digest-message: {}", d_msg_type, message);
     signer(&message, &new_tx.data().into()).map(|data| Bytes::from(data.to_vec()))
 }
 
