@@ -270,6 +270,7 @@ impl TxHelper {
         mut signer: SignerFn,
         get_live_cell: C,
         skip_check: bool,
+        only_digest: bool,
     ) -> Result<HashMap<Bytes, Bytes>, String>
     where
         C: FnMut(OutPoint, bool) -> Result<CellOutput, String>,
@@ -311,6 +312,7 @@ impl TxHelper {
                     |message: &H256, tx: &rpc_types::Transaction| {
                         signer(&lock_args, message, tx).map(|sig| sig.unwrap())
                     },
+                    only_digest,
                 )?;
                 signatures.insert(lock_arg, signature);
             }
@@ -395,6 +397,7 @@ impl TxHelper {
         get_live_cell: C,
         skip_check: bool,
         outter_witness: Vec<Bytes>,
+        only_digest: bool,
     ) -> Result<HashMap<Bytes, Bytes>, String>
     where
         C: FnMut(OutPoint, bool) -> Result<CellOutput, String>,
@@ -443,6 +446,7 @@ impl TxHelper {
                     |message: &H256, tx: &rpc_types::Transaction| {
                         signer(&lock_args, message, tx).map(|sig| sig.unwrap())
                     },
+                    only_digest,
                 )?;
                 signatures.insert(lock_arg, signature);
 
@@ -737,6 +741,7 @@ pub fn build_signature<
     witnesses: &[packed::Bytes],
     multisig_config_opt: Option<&MultisigConfig>,
     mut signer: S,
+    only_digest: bool,
 ) -> Result<Bytes, String> {
     let init_witness_idx = input_group_idxs[0];
     let init_witness = if witnesses[init_witness_idx].raw_data().is_empty() {
@@ -789,7 +794,12 @@ pub fn build_signature<
         .set_witnesses(new_witnesses)
         .build();
     println!("{} digest-message: {}", d_msg_type, message);
-    signer(&message, &new_tx.data().into()).map(|data| Bytes::from(data.to_vec()))
+    if !only_digest {
+        signer(&message, &new_tx.data().into()).map(|data| Bytes::from(data.to_vec()))
+    }
+    else {
+        Ok(Bytes::new())
+    }
 }
 
 #[cfg(test)]

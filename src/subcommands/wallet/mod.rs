@@ -548,8 +548,10 @@ impl<'a> WalletSubCommand<'a> {
                 password,
             )
         };
+
+        let only_digest: bool = false;
         for (lock_arg, signature) in
-            helper.sign_inputs(signer, &mut get_live_cell_fn, skip_check)?
+            helper.sign_inputs(signer, &mut get_live_cell_fn, skip_check, only_digest)?
         {
             helper.add_signature(lock_arg, signature)?;
         }
@@ -566,6 +568,7 @@ impl<'a> WalletSubCommand<'a> {
         &mut self,
         args: TransferWithOutterWitnessArgs,
         skip_check: bool,
+        only_digest: bool,
     ) -> Result<TransactionView, String> {
         let TransferWithOutterWitnessArgs {
             privkey_path,
@@ -950,7 +953,7 @@ impl<'a> WalletSubCommand<'a> {
         
         let outter_witness_copy = outter_witness.clone();
         for (lock_arg, signature) in
-            helper.sign_inputs_with_outter_witness(signer, &mut get_live_cell_fn, skip_check, outter_witness)?
+            helper.sign_inputs_with_outter_witness(signer, &mut get_live_cell_fn, skip_check, outter_witness, only_digest)?
         {
             helper.add_signature(lock_arg, signature)?;
         }
@@ -1097,6 +1100,8 @@ impl<'a> CliSubCommand for WalletSubCommand<'a> {
                 let require_first_n: u8 =
                     FromStrParser::<u8>::default().from_matches(m, "require-first-n")?;
                 let threshold: u8 = FromStrParser::<u8>::default().from_matches(m, "threshold")?;
+                
+                let only_digest: bool = m.is_present("only-digest");
 
                 let args = TransferWithOutterWitnessArgs {
                     privkey_path: m.value_of("privkey-path").map(|s| s.to_string()),
@@ -1126,7 +1131,7 @@ impl<'a> CliSubCommand for WalletSubCommand<'a> {
                     require_first_n: require_first_n,
                     threshold: threshold,
                 };
-                let tx = self.deploy_via_transfer(args, true)?;
+                let tx = self.deploy_via_transfer(args, true, only_digest)?;
                 if debug {
                     let rpc_tx_view = json_types::TransactionView::from(tx.clone());
                     println!("{}", serde_json::to_string_pretty(&rpc_tx_view).unwrap());

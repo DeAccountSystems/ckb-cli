@@ -91,6 +91,9 @@ impl<'a> TxSubCommand<'a> {
         let arg_skip_check = Arg::with_name("skip-check")
             .long("skip-check")
             .about("Send transaction without any check, be cautious to use this flag");
+        let arg_only_digest= Arg::with_name("only-digest")
+            .long("only-digest")
+            .about("Only output digest of the tx");
 
         App::new(name)
             .about("Handle common sighash/multisig transaction")
@@ -212,7 +215,8 @@ impl<'a> TxSubCommand<'a> {
                             .long("add-signatures")
                             .about("Sign and add signatures"),
                     )
-                    .arg(arg_skip_check.clone()),
+                    .arg(arg_skip_check.clone())
+                    .arg(arg_only_digest.clone()),
                 App::new("send")
                     .about("Send multisig transaction")
                     .arg(arg_tx_file.clone())
@@ -467,6 +471,8 @@ impl<'a> CliSubCommand for TxSubCommand<'a> {
                     })
                     .transpose()?;
                 let skip_check: bool = m.is_present("skip-check");
+                
+                let only_digest: bool = m.is_present("only-digest");
 
                 let signer = if let Some(privkey) = privkey_opt {
                     get_privkey_signer(privkey)
@@ -495,7 +501,7 @@ impl<'a> CliSubCommand for TxSubCommand<'a> {
                 };
 
                 let signatures = modify_tx_file(&tx_file, network, |helper| {
-                    let signatures = helper.sign_inputs(signer, get_live_cell, skip_check)?;
+                    let signatures = helper.sign_inputs(signer, get_live_cell, skip_check, only_digest)?;
                     if m.is_present("add-signatures") {
                         for (lock_arg, signature) in signatures.clone() {
                             helper.add_signature(lock_arg, signature)?;
