@@ -738,7 +738,7 @@ message = "0x"
                 let version_short = version.short();
                 let version_long = version.long();
                 let mut app = build_cli(&version_short, &version_long);
-                let bin_name = "ckb-cli";
+                let bin_name = "das-cli";
                 let output = &mut std::io::stdout();
                 match shell {
                     "bash" => clap_generate::generate::<Bash, _>(&mut app, bin_name, output),
