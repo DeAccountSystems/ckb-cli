@@ -356,7 +356,7 @@ pub struct Header {
     pub parent_hash: H256,
     pub transactions_root: H256,
     pub proposals_hash: H256,
-    pub uncles_hash: H256,
+    pub extra_hash: H256,
     pub dao: Byte32,
     pub nonce: Uint128,
 }
@@ -371,7 +371,7 @@ impl From<rpc_types::Header> for Header {
             parent_hash: json.parent_hash,
             transactions_root: json.transactions_root,
             proposals_hash: json.proposals_hash,
-            uncles_hash: json.uncles_hash,
+            extra_hash: json.extra_hash,
             dao: json.dao,
             nonce: json.nonce,
         }
@@ -388,7 +388,7 @@ impl From<Header> for packed::Header {
             transactions_root,
             proposals_hash,
             compact_target,
-            uncles_hash,
+            extra_hash,
             dao,
             nonce,
         } = json;
@@ -401,7 +401,7 @@ impl From<Header> for packed::Header {
             .transactions_root(transactions_root.pack())
             .proposals_hash(proposals_hash.pack())
             .compact_target(compact_target.pack())
-            .uncles_hash(uncles_hash.pack())
+            .extra_hash(extra_hash.pack())
             .dao(dao.into())
             .build();
         packed::Header::new_builder()
@@ -569,37 +569,6 @@ impl From<rpc_types::EpochView> for EpochView {
 }
 
 #[derive(Clone, Default, Serialize, Deserialize, PartialEq, Eq, Hash, Debug)]
-pub struct BlockReward {
-    pub total: Capacity,
-    pub primary: Capacity,
-    pub secondary: Capacity,
-    pub tx_fee: Capacity,
-    pub proposal_reward: Capacity,
-}
-impl From<rpc_types::BlockReward> for BlockReward {
-    fn from(json: rpc_types::BlockReward) -> BlockReward {
-        BlockReward {
-            total: json.total.into(),
-            primary: json.primary.into(),
-            secondary: json.secondary.into(),
-            tx_fee: json.tx_fee.into(),
-            proposal_reward: json.proposal_reward.into(),
-        }
-    }
-}
-impl From<BlockReward> for core::BlockReward {
-    fn from(json: BlockReward) -> Self {
-        Self {
-            total: core::Capacity::shannons(json.total.0),
-            primary: core::Capacity::shannons(json.primary.0),
-            secondary: core::Capacity::shannons(json.secondary.0),
-            tx_fee: core::Capacity::shannons(json.tx_fee.0),
-            proposal_reward: core::Capacity::shannons(json.proposal_reward.0),
-        }
-    }
-}
-
-#[derive(Clone, Default, Serialize, Deserialize, PartialEq, Eq, Hash, Debug)]
 pub struct TransactionProof {
     /// Block hash
     pub block_hash: H256,
@@ -756,31 +725,6 @@ impl From<rpc_types::Consensus> for Consensus {
 // =========
 //  cell.rs
 // =========
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CellOutputWithOutPoint {
-    pub out_point: OutPoint,
-    pub block_hash: H256,
-    pub capacity: Capacity,
-    pub lock: Script,
-    #[serde(rename = "type")]
-    pub type_: Option<Script>,
-    //// TODO: update those fields
-    // pub output_data_len: Uint64,
-    // pub cellbase: bool,
-}
-impl From<rpc_types::CellOutputWithOutPoint> for CellOutputWithOutPoint {
-    fn from(json: rpc_types::CellOutputWithOutPoint) -> CellOutputWithOutPoint {
-        CellOutputWithOutPoint {
-            out_point: json.out_point.into(),
-            block_hash: json.block_hash,
-            capacity: json.capacity.into(),
-            lock: json.lock.into(),
-            type_: json.type_.map(Into::into),
-            // output_data_len: json.output_data_len.into(),
-            // cellbase: json.cellbase,
-        }
-    }
-}
 
 //// TODO: Make `cell::CellData` public
 // #[derive(Debug, Serialize, Deserialize)]
@@ -912,74 +856,6 @@ impl From<rpc_types::ChainInfo> for ChainInfo {
             difficulty: json.difficulty,
             is_initial_block_download: json.is_initial_block_download,
             alerts: json.alerts.into_iter().map(Into::into).collect(),
-        }
-    }
-}
-
-// ============
-//  indexer.rs
-// ============
-#[derive(Debug, Serialize, Deserialize)]
-pub struct LiveCell {
-    pub created_by: TransactionPoint,
-    pub cell_output: CellOutput,
-    //// TODO: update those fields
-    // pub output_data_len: Uint64,
-    // pub cellbase: bool,
-}
-impl From<rpc_types::LiveCell> for LiveCell {
-    fn from(json: rpc_types::LiveCell) -> LiveCell {
-        LiveCell {
-            created_by: json.created_by.into(),
-            cell_output: json.cell_output.into(),
-            // output_data_len: json.output_data_len.into(),
-            // cellbase: json.cellbase,
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CellTransaction {
-    pub created_by: TransactionPoint,
-    pub consumed_by: Option<TransactionPoint>,
-}
-impl From<rpc_types::CellTransaction> for CellTransaction {
-    fn from(json: rpc_types::CellTransaction) -> CellTransaction {
-        CellTransaction {
-            created_by: json.created_by.into(),
-            consumed_by: json.consumed_by.map(Into::into),
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct TransactionPoint {
-    pub block_number: BlockNumber,
-    pub tx_hash: H256,
-    pub index: Uint64,
-}
-impl From<rpc_types::TransactionPoint> for TransactionPoint {
-    fn from(json: rpc_types::TransactionPoint) -> TransactionPoint {
-        TransactionPoint {
-            block_number: json.block_number.into(),
-            tx_hash: json.tx_hash,
-            index: json.index.into(),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct LockHashIndexState {
-    pub lock_hash: H256,
-    pub block_number: BlockNumber,
-    pub block_hash: H256,
-}
-impl From<rpc_types::LockHashIndexState> for LockHashIndexState {
-    fn from(json: rpc_types::LockHashIndexState) -> LockHashIndexState {
-        LockHashIndexState {
-            lock_hash: json.lock_hash,
-            block_number: json.block_number.into(),
-            block_hash: json.block_hash,
         }
     }
 }
@@ -1152,7 +1028,7 @@ impl From<rpc_types::TxPoolInfo> for TxPoolInfo {
 
 /// Transaction verbose info
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Debug)]
-pub struct TxVerbosity {
+pub struct TxPoolEntry {
     /// Consumed cycles.
     pub cycles: Uint64,
     /// The transaction serialized size in block.
@@ -1166,9 +1042,9 @@ pub struct TxVerbosity {
     /// Number of in-tx-pool ancestor transactions
     pub ancestors_count: Uint64,
 }
-impl From<rpc_types::TxVerbosity> for TxVerbosity {
-    fn from(json: rpc_types::TxVerbosity) -> TxVerbosity {
-        TxVerbosity {
+impl From<rpc_types::TxPoolEntry> for TxPoolEntry {
+    fn from(json: rpc_types::TxPoolEntry) -> TxPoolEntry {
+        TxPoolEntry {
             cycles: json.cycles.into(),
             size: json.size.into(),
             fee: json.fee.into(),
@@ -1180,15 +1056,15 @@ impl From<rpc_types::TxVerbosity> for TxVerbosity {
 }
 
 #[derive(Clone, Default, Serialize, Deserialize, PartialEq, Eq, Debug)]
-pub struct TxPoolVerbosity {
+pub struct TxPoolEntries {
     /// Pending tx verbose info
-    pub pending: HashMap<H256, TxVerbosity>,
+    pub pending: HashMap<H256, TxPoolEntry>,
     /// Proposed tx verbose info
-    pub proposed: HashMap<H256, TxVerbosity>,
+    pub proposed: HashMap<H256, TxPoolEntry>,
 }
-impl From<rpc_types::TxPoolVerbosity> for TxPoolVerbosity {
-    fn from(json: rpc_types::TxPoolVerbosity) -> TxPoolVerbosity {
-        TxPoolVerbosity {
+impl From<rpc_types::TxPoolEntries> for TxPoolEntries {
+    fn from(json: rpc_types::TxPoolEntries) -> TxPoolEntries {
+        TxPoolEntries {
             pending: json
                 .pending
                 .into_iter()
@@ -1205,17 +1081,17 @@ impl From<rpc_types::TxPoolVerbosity> for TxPoolVerbosity {
 
 /// All transactions in tx-pool.
 ///
-/// `RawTxPool` is equivalent to [`TxPoolIds`][] `|` [`TxPoolVerbosity`][].
+/// `RawTxPool` is equivalent to [`TxPoolIds`][] `|` [`TxPoolEntries`][].
 ///
 /// [`TxPoolIds`]: struct.TxPoolIds.html
-/// [`TxPoolVerbosity`]: struct.TxPoolVerbosity.html
+/// [`TxPoolEntries`]: struct.TxPoolEntries.html
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(untagged)]
 pub enum RawTxPool {
     /// verbose = false
     Ids(TxPoolIds),
     /// verbose = true
-    Verbose(TxPoolVerbosity),
+    Verbose(TxPoolEntries),
 }
 
 impl From<rpc_types::RawTxPool> for RawTxPool {
@@ -1226,27 +1102,3 @@ impl From<rpc_types::RawTxPool> for RawTxPool {
         }
     }
 }
-
-// =========
-//  sync.rs
-// =========
-//// TODO make PeerState fields public
-// #[derive(Deserialize, Serialize, Debug)]
-// pub struct PeerState {
-//     // TODO use peer_id
-//     // peer session id
-//     pub peer: Uint32,
-//     // last updated timestamp
-//     pub last_updated: Timestamp,
-//     // blocks count has request but not receive response yet
-//     pub blocks_in_flight: Uint32,
-// }
-// impl From<rpc_types::PeerState> for PeerState {
-//     fn from(json: rpc_types::PeerState) -> PeerState {
-//         PeerState {
-//             peer: json.peer.into(),
-//             last_updated: json.last_updated.into(),
-//             blocks_in_flight: json.blocks_in_flight.into()
-//         }
-//     }
-// }

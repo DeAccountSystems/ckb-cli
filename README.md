@@ -19,7 +19,7 @@ All second level sub-commands are listed in [wiki page](https://github.com/nervo
 ```
 git clone https://github.com/nervosnetwork/ckb-cli.git
 cd ckb-cli
-cargo install --path . -f
+cargo install --path . -f --locked
 ```
 
 ## Usage
@@ -61,7 +61,7 @@ transactions_root: 0xc4991d3e261c27a0ce7ea9801de5f0a5f56ffb82a29d7a6e8e7cf44dbb2
 witnesses_root: 0x39116bc1a56f5ca82cf5226f172f97ff8a8d9626ca7e41d8cd92e76666e069f8
 proposals_hash: 0x0000000000000000000000000000000000000000000000000000000000000000
 difficulty: 0x4000000
-uncles_hash: 0x0000000000000000000000000000000000000000000000000000000000000000
+extra_hash: 0x0000000000000000000000000000000000000000000000000000000000000000
 uncles_count: "0"
 dao: 0x0100000000000000af9a31ce318a230000cc083d71c4350000d774f0356a0000
 nonce: "1876243812404095811"

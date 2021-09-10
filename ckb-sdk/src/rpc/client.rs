@@ -1,11 +1,11 @@
 use ckb_jsonrpc_types::{
-    BannedAddr, Block, BlockNumber, BlockReward, BlockTemplate, BlockView, CellOutputWithOutPoint,
-    CellTransaction, CellWithStatus, ChainInfo, Consensus, EpochNumber, EpochView,
-    ExtraLoggerConfig, HeaderView, JsonBytes, LiveCell, LocalNode, LockHashIndexState,
-    MainLoggerConfig, OutPoint, PeerState, RawTxPool, RemoteNode, Script, Timestamp, Transaction,
-    TransactionProof, TransactionWithStatus, TxPoolInfo, Uint64, Version,
+    BannedAddr, Block, BlockNumber, BlockTemplate, BlockView, CellWithStatus, ChainInfo, Consensus,
+    Cycle, EpochNumber, EpochView, ExtraLoggerConfig, HeaderView, JsonBytes, LocalNode,
+    MainLoggerConfig, OutPoint, OutputsValidator, RawTxPool, RemoteNode, Script, Timestamp,
+    Transaction, TransactionProof, TransactionWithStatus, TxPoolInfo, Uint64, Version,
 };
 
+use super::primitive;
 use super::types;
 use ckb_types::{packed, H256};
 
@@ -20,7 +20,7 @@ macro_rules! jsonrpc {
     ) => (
         $(#[$struct_attr])*
         pub struct $struct_name {
-            pub client: reqwest::Client,
+            pub client: reqwest::blocking::Client,
             pub url: reqwest::Url,
             pub id: u64,
         }
@@ -28,7 +28,7 @@ macro_rules! jsonrpc {
         impl $struct_name {
             pub fn new(uri: &str) -> Self {
                 let url = reqwest::Url::parse(uri).expect("ckb uri, e.g. \"http://127.0.0.1:8114\"");
-                $struct_name { url, id: 0, client: reqwest::Client::new(), }
+                $struct_name { url, id: 0, client: reqwest::blocking::Client::new(), }
             }
 
             $(
@@ -44,13 +44,13 @@ macro_rules! jsonrpc {
                     req_json.insert("method".to_owned(), serde_json::json!(method));
                     req_json.insert("params".to_owned(), params);
 
-                    let mut resp = $selff.client.post($selff.url.clone()).json(&req_json).send()?;
-                    let output = resp.json::<ckb_jsonrpc_types::response::Output>()?;
+                    let resp = $selff.client.post($selff.url.clone()).json(&req_json).send()?;
+                    let output = resp.json::<jsonrpc_core::response::Output>()?;
                     match output {
-                        ckb_jsonrpc_types::response::Output::Success(success) => {
+                        jsonrpc_core::response::Output::Success(success) => {
                             serde_json::from_value(success.result).map_err(Into::into)
                         },
-                        ckb_jsonrpc_types::response::Output::Failure(failure) => {
+                        jsonrpc_core::response::Output::Failure(failure) => {
                             Err(failure.error.into())
                         }
                     }
@@ -70,8 +70,6 @@ jsonrpc!(pub struct RawHttpRpcClient {
     pub fn get_block(&mut self, hash: H256) -> Option<BlockView>;
     pub fn get_block_by_number(&mut self, number: BlockNumber) -> Option<BlockView>;
     pub fn get_block_hash(&mut self, number: BlockNumber) -> Option<H256>;
-    pub fn get_cellbase_output_capacity_details(&mut self, hash: H256) -> Option<BlockReward>;
-    pub fn get_cells_by_lock_hash(&mut self, lock_hash: H256, from: BlockNumber, to: BlockNumber) -> Vec<CellOutputWithOutPoint>;
     pub fn get_current_epoch(&mut self) -> EpochView;
     pub fn get_epoch_by_number(&mut self, number: EpochNumber) -> Option<EpochView>;
     pub fn get_header(&mut self, hash: H256) -> Option<HeaderView>;
@@ -88,28 +86,7 @@ jsonrpc!(pub struct RawHttpRpcClient {
     pub fn verify_transaction_proof(&mut self, tx_proof: TransactionProof) -> Vec<H256>;
     pub fn get_fork_block(&mut self, block_hash: H256) -> Option<BlockView>;
     pub fn get_consensus(&mut self) -> Consensus;
-
-    // Indexer
-    pub fn deindex_lock_hash(&mut self, lock_hash: H256) -> ();
-    pub fn get_live_cells_by_lock_hash(
-        &mut self,
-        lock_hash: H256,
-        page: Uint64,
-        per_page: Uint64,
-        reverse_order: Option<bool>
-    ) -> Vec<LiveCell>;
-    pub fn get_transactions_by_lock_hash(
-        &mut self,
-        lock_hash: H256,
-        page: Uint64,
-        per_page: Uint64,
-        reverse_order: Option<bool>
-    ) -> Vec<CellTransaction>;
-    pub fn index_lock_hash(
-        &mut self,
-        lock_hash: H256,
-        index_from: Option<BlockNumber>
-    ) -> LockHashIndexState;
+    pub fn get_block_median_time(&mut self, block_hash: H256) -> Option<Timestamp>;
 
     // Net
     pub fn get_banned_addresses(&mut self) -> Vec<BannedAddr>;
@@ -131,13 +108,12 @@ jsonrpc!(pub struct RawHttpRpcClient {
     pub fn ping_peers(&mut self) -> ();
 
     // Pool
-    pub fn send_transaction(&mut self, tx: Transaction) -> H256;
+    pub fn send_transaction(&mut self, tx: Transaction, outputs_validator: Option<OutputsValidator>) -> H256;
     pub fn tx_pool_info(&mut self) -> TxPoolInfo;
     pub fn get_raw_tx_pool(&mut self, verbose: Option<bool>) -> RawTxPool;
 
     // Stats
     pub fn get_blockchain_info(&mut self) -> ChainInfo;
-    pub fn get_peers_state(&mut self) -> Vec<PeerState>;
 
     // Miner
     pub fn get_block_template(&mut self, bytes_limit: Option<Uint64>, proposals_limit: Option<Uint64>, max_version: Option<Version>) -> BlockTemplate;
@@ -147,7 +123,7 @@ jsonrpc!(pub struct RawHttpRpcClient {
     pub fn process_block_without_verify(&mut self, data: Block, broadcast: bool) -> Option<H256>;
     pub fn truncate(&mut self, target_tip_hash: H256) -> ();
     pub fn generate_block(&mut self, block_assembler_script: Option<Script>, block_assembler_message: Option<JsonBytes>) -> H256;
-    pub fn broadcast_transaction(&mut self, tx: Transaction) -> H256;
+    pub fn broadcast_transaction(&mut self, tx: Transaction, cycles: Cycle) -> H256;
 
     // Debug
     pub fn jemalloc_profiling_dump(&mut self) -> String;
@@ -192,26 +168,6 @@ impl HttpRpcClient {
         self.client
             .get_block_hash(BlockNumber::from(number))
             .map(|opt| opt.map(Into::into))
-            .map_err(|err| err.to_string())
-    }
-    pub fn get_cellbase_output_capacity_details(
-        &mut self,
-        hash: H256,
-    ) -> Result<Option<types::BlockReward>, String> {
-        self.client
-            .get_cellbase_output_capacity_details(hash)
-            .map(|opt| opt.map(Into::into))
-            .map_err(|err| err.to_string())
-    }
-    pub fn get_cells_by_lock_hash(
-        &mut self,
-        lock_hash: H256,
-        from: u64,
-        to: u64,
-    ) -> Result<Vec<types::CellOutputWithOutPoint>, String> {
-        self.client
-            .get_cells_by_lock_hash(lock_hash, BlockNumber::from(from), BlockNumber::from(to))
-            .map(|vec| vec.into_iter().map(Into::into).collect())
             .map_err(|err| err.to_string())
     }
     pub fn get_current_epoch(&mut self) -> Result<types::EpochView, String> {
@@ -302,59 +258,13 @@ impl HttpRpcClient {
             .map(Into::into)
             .map_err(|err| err.to_string())
     }
-
-    // Indexer
-    #[deprecated(since = "0.36.0", note = "Use standalone ckb-indexer")]
-    pub fn deindex_lock_hash(&mut self, lock_hash: H256) -> Result<(), String> {
-        self.client
-            .deindex_lock_hash(lock_hash)
-            .map_err(|err| err.to_string())
-    }
-    #[deprecated(since = "0.36.0", note = "Use standalone ckb-indexer")]
-    pub fn get_live_cells_by_lock_hash(
+    pub fn get_block_median_time(
         &mut self,
-        lock_hash: H256,
-        page: u64,
-        per_page: u64,
-        reverse_order: Option<bool>,
-    ) -> Result<Vec<types::LiveCell>, String> {
+        hash: H256,
+    ) -> Result<Option<primitive::Timestamp>, String> {
         self.client
-            .get_live_cells_by_lock_hash(
-                lock_hash,
-                Uint64::from(page),
-                Uint64::from(per_page),
-                reverse_order,
-            )
-            .map(|vec| vec.into_iter().map(Into::into).collect())
-            .map_err(|err| err.to_string())
-    }
-    #[deprecated(since = "0.36.0", note = "Use standalone ckb-indexer")]
-    pub fn get_transactions_by_lock_hash(
-        &mut self,
-        lock_hash: H256,
-        page: u64,
-        per_page: u64,
-        reverse_order: Option<bool>,
-    ) -> Result<Vec<types::CellTransaction>, String> {
-        self.client
-            .get_transactions_by_lock_hash(
-                lock_hash,
-                Uint64::from(page),
-                Uint64::from(per_page),
-                reverse_order,
-            )
-            .map(|vec| vec.into_iter().map(Into::into).collect())
-            .map_err(|err| err.to_string())
-    }
-    #[deprecated(since = "0.36.0", note = "Use standalone ckb-indexer")]
-    pub fn index_lock_hash(
-        &mut self,
-        lock_hash: H256,
-        index_from: Option<u64>,
-    ) -> Result<types::LockHashIndexState, String> {
-        self.client
-            .index_lock_hash(lock_hash, index_from.map(BlockNumber::from))
-            .map(Into::into)
+            .get_block_median_time(hash)
+            .map(|opt| opt.map(Into::into))
             .map_err(|err| err.to_string())
     }
 
@@ -420,9 +330,13 @@ impl HttpRpcClient {
     }
 
     // Pool
-    pub fn send_transaction(&mut self, tx: packed::Transaction) -> Result<H256, String> {
+    pub fn send_transaction(
+        &mut self,
+        tx: packed::Transaction,
+        outputs_validator: Option<OutputsValidator>,
+    ) -> Result<H256, String> {
         self.client
-            .send_transaction(tx.into())
+            .send_transaction(tx.into(), outputs_validator)
             .map_err(|err| err.to_string())
     }
     pub fn tx_pool_info(&mut self) -> Result<types::TxPoolInfo, String> {
@@ -445,9 +359,6 @@ impl HttpRpcClient {
             .get_blockchain_info()
             .map(Into::into)
             .map_err(|err| err.to_string())
-    }
-    pub fn get_peers_state(&mut self) -> Result<Vec<PeerState>, String> {
-        self.client.get_peers_state().map_err(|err| err.to_string())
     }
 
     // Miner
@@ -472,9 +383,13 @@ impl HttpRpcClient {
     }
 
     // IntegrationTest
-    pub fn broadcast_transaction(&mut self, tx: packed::Transaction) -> Result<H256, String> {
+    pub fn broadcast_transaction(
+        &mut self,
+        tx: packed::Transaction,
+        cycles: u64,
+    ) -> Result<H256, String> {
         self.client
-            .broadcast_transaction(tx.into())
+            .broadcast_transaction(tx.into(), Cycle::from(cycles))
             .map_err(|err| err.to_string())
     }
 

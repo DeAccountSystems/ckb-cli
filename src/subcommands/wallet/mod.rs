@@ -347,7 +347,7 @@ impl<'a> WalletSubCommand<'a> {
                 && to_address_code_hash == MULTISIG_TYPE_HASH
                 && (to_address_args_len == 20 || to_address_args_len == 28))
         {
-            return Err(format!("Invalid to-address: {}", to_address));
+            return Err(format!("Invalid to-address: {}\n[Hint]: Add `--skip-check-to-address` flag to transfer to any address", to_address));
         }
         check_capacity(to_capacity, to_data.len())?;
 
@@ -556,9 +556,14 @@ impl<'a> WalletSubCommand<'a> {
             helper.add_signature(lock_arg, signature)?;
         }
         let tx = helper.build_tx(&mut get_live_cell_fn, skip_check)?;
+        let outputs_validator = if is_type_id || skip_check || skip_check_to_address {
+            Some(json_types::OutputsValidator::Passthrough)
+        } else {
+            None
+        };
         let tx_hash = self
             .rpc_client
-            .send_transaction(tx.data())
+            .send_transaction(tx.data(), outputs_validator)
             .map_err(|err| format!("Send transaction error: {}", err))?;
         assert_eq!(tx.hash(), tx_hash.pack());
         Ok(tx)
@@ -972,9 +977,14 @@ impl<'a> WalletSubCommand<'a> {
             }
         } 
         if should_send_tx == 1 {
+            let outputs_validator = if is_type_id || skip_check || skip_check_to_address {
+                Some(json_types::OutputsValidator::Passthrough)
+            } else {
+                None
+            };
             let tx_hash = self
                 .rpc_client
-                .send_transaction(tx.data())
+                .send_transaction(tx.data(), outputs_validator)
                 .map_err(|err| format!("Send transaction error: {}", err))?;
             assert_eq!(tx.hash(), tx_hash.pack());
         };

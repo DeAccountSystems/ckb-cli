@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::io::{self, Read};
-use std::iter::FromIterator;
 use std::path::PathBuf;
 use std::process;
 use std::sync::Arc;
@@ -19,8 +18,8 @@ use interactive::InteractiveEnv;
 use plugin::PluginManager;
 use subcommands::{
     start_index_thread, AccountSubCommand, ApiServerSubCommand, CliSubCommand, DAOSubCommand,
-    IndexSubCommand, MockTxSubCommand, MoleculeSubCommand, PluginSubCommand, RpcSubCommand,
-    TxSubCommand, UtilSubCommand, WalletSubCommand,
+    IndexSubCommand, MockTxSubCommand, MoleculeSubCommand, PluginSubCommand, PubSubCommand,
+    RpcSubCommand, TxSubCommand, UtilSubCommand, WalletSubCommand,
 };
 use utils::other::get_genesis_info;
 use utils::{
@@ -47,11 +46,14 @@ fn main() -> Result<(), io::Error> {
     let ansi_support = ansi_term::enable_ansi_support().is_ok();
 
     let version = get_version();
-    let version_short = version.short();
-    let version_long = version.long();
-    let matches = build_cli(&version_short, &version_long).get_matches();
+    // TODO:
+    //   It will not print newline with --version or -V, it's a bug of clap. https://github.com/clap-rs/clap/issues/1960
+    //   revisit here when clap updated.
+    let version_short = format!("{}\n", version.short());
+    let version_long = format!("{}\n", version.long());
+    let matches = build_cli(version_short.as_str(), version_long.as_str()).get_matches();
 
-    let mut env_map: HashMap<String, String> = HashMap::from_iter(env::vars());
+    let mut env_map: HashMap<String, String> = env::vars().collect();
     let api_uri_opt = matches
         .value_of("url")
         .map(ToOwned::to_owned)
@@ -120,7 +122,7 @@ fn main() -> Result<(), io::Error> {
     if let Some(format) = matches.value_of("output-format") {
         output_format = OutputFormat::from_str(format).unwrap();
     }
-    let mut key_store = get_key_store(&ckb_cli_dir).map_err(|err| {
+    let mut key_store = get_key_store(ckb_cli_dir.clone()).map_err(|err| {
         io::Error::new(
             io::ErrorKind::Other,
             format!("Open file based key store error: {}", err),
@@ -132,9 +134,13 @@ fn main() -> Result<(), io::Error> {
         ("tui", _) => TuiSubCommand::new(api_uri, index_dir, index_controller.clone())
             .start()
             .map(|s| Output::new_output(serde_json::json!(s))),
-        ("rpc", Some(sub_matches)) => {
-            RpcSubCommand::new(&mut rpc_client, &mut raw_rpc_client).process(&sub_matches, debug)
-        }
+        ("rpc", Some(sub_matches)) => match sub_matches.subcommand() {
+            ("subscribe", Some(sub_sub_matches)) => {
+                PubSubCommand::new(output_format, color).process(&sub_sub_matches, debug)
+            }
+            _ => RpcSubCommand::new(&mut rpc_client, &mut raw_rpc_client)
+                .process(&sub_matches, debug),
+        },
         ("account", Some(sub_matches)) => {
             AccountSubCommand::new(&mut plugin_mgr, &mut key_store).process(&sub_matches, debug)
         }
@@ -237,7 +243,7 @@ pub fn get_version() -> Version {
         .expect("CARGO_PKG_VERSION_PATCH parse success");
     let dash_pre = {
         let pre = env!("CARGO_PKG_VERSION_PRE");
-        if pre == "" {
+        if pre.is_empty() {
             pre.to_string()
         } else {
             "-".to_string() + pre
@@ -265,7 +271,7 @@ pub fn build_cli<'a>(version_short: &'a str, version_long: &'a str) -> App<'a> {
         .long_version(version_long)
         .global_setting(AppSettings::ColoredHelp)
         .global_setting(AppSettings::DeriveDisplayOrder)
-        .subcommand(RpcSubCommand::subcommand())
+        .subcommand(RpcSubCommand::subcommand().subcommand(PubSubCommand::subcommand()))
         .subcommand(AccountSubCommand::subcommand("account"))
         .subcommand(MockTxSubCommand::subcommand("mock-tx"))
         .subcommand(TxSubCommand::subcommand("tx"))
