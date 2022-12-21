@@ -89,6 +89,7 @@ impl TxHelper {
         genesis_info: &GenesisInfo,
         deps_trx: Vec<OutPoint>,
         skip_check: bool,
+        pre_register: bool,
     ) -> Result<(), String> {
         let lock = get_live_cell(out_point.clone(), false)?.lock();
         check_lock_script(&lock, skip_check)?;
@@ -101,6 +102,8 @@ impl TxHelper {
                 let mut since_bytes = [0u8; 8];
                 since_bytes.copy_from_slice(&lock_arg[20..]);
                 u64::from_le_bytes(since_bytes)
+            } else if pre_register{
+                0x8000000000000001 // 9223372036854775809
             } else {
                 0
             }

@@ -200,6 +200,10 @@ impl<'a> WalletSubCommand<'a> {
                             .long("skip-check-to-address")
                             .about("Skip check <to-address> (default only allow sighash/multisig address), be cautious to use this flag"))
                     .arg(
+                        Arg::with_name("is-pre-register")
+                            .long("is-pre-register")
+                            .about("Only for pre-register in .bit process"))
+                    .arg(
                         Arg::with_name("type-id")
                             .long("type-id")
                             .about("Add type id type script to target output cell"),
@@ -588,6 +592,7 @@ impl<'a> WalletSubCommand<'a> {
             to_data,
             is_type_id,
             skip_check_to_address,
+            is_pre_register,
             outter_witness,
             type_script_opt,
             lock_script_opt,
@@ -855,7 +860,17 @@ impl<'a> WalletSubCommand<'a> {
                 .map(|(output, _)| output)
         };
         if cell_deps_trx_vec.len() > 0 {
-            for info in &infos {
+            let cell_deps_trx_vec_clone = cell_deps_trx_vec.clone();
+            helper.add_input_with_cell_deps(
+                infos[0].out_point(),
+                None,
+                &mut get_live_cell_fn,
+                &genesis_info,
+                cell_deps_trx_vec_clone,
+                skip_check,
+                is_pre_register,
+            )?;
+            for info in &infos[1..] {
                 let cell_deps_trx_vec_clone = cell_deps_trx_vec.clone();
                 helper.add_input_with_cell_deps(
                     info.out_point(),
@@ -864,6 +879,7 @@ impl<'a> WalletSubCommand<'a> {
                     &genesis_info,
                     cell_deps_trx_vec_clone,
                     skip_check,
+                    false,
                 )?;
             }
         }
@@ -977,14 +993,14 @@ impl<'a> WalletSubCommand<'a> {
             }
         } 
         if should_send_tx == 1 {
-            let outputs_validator = if is_type_id || skip_check || skip_check_to_address {
-                Some(json_types::OutputsValidator::Passthrough)
-            } else {
-                None
-            };
+            // let outputs_validator = if is_type_id || skip_check || skip_check_to_address {
+            //     Some(json_types::OutputsValidator::Passthrough)
+            // } else {
+            //     None
+            // };
             let tx_hash = self
                 .rpc_client
-                .send_transaction(tx.data(), outputs_validator)
+                .send_transaction(tx.data(), Some(json_types::OutputsValidator::Passthrough))
                 .map_err(|err| format!("Send transaction error: {}", err))?;
             assert_eq!(tx.hash(), tx_hash.pack());
         };
@@ -1131,6 +1147,7 @@ impl<'a> CliSubCommand for WalletSubCommand<'a> {
                     to_data: Some(to_data),
                     is_type_id: m.is_present("type-id"),
                     skip_check_to_address: m.is_present("skip-check-to-address"),
+                    is_pre_register: m.is_present("is-pre-register"),
                     outter_witness: outter_witness,
                     type_script_opt: Some(type_script_opt),
                     lock_script_opt: Some(lock_script_opt),
@@ -1447,6 +1464,7 @@ pub struct TransferWithOutterWitnessArgs {
     pub to_data: Option<Bytes>,
     pub is_type_id: bool,
     pub skip_check_to_address: bool,
+    pub is_pre_register: bool,
     pub outter_witness: Vec<Bytes>,
     pub type_script_opt: Option<Bytes>,
     pub lock_script_opt: Option<Bytes>,
