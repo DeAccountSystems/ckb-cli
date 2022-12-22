@@ -200,9 +200,13 @@ impl<'a> WalletSubCommand<'a> {
                             .long("skip-check-to-address")
                             .about("Skip check <to-address> (default only allow sighash/multisig address), be cautious to use this flag"))
                     .arg(
-                        Arg::with_name("is-pre-register")
-                            .long("is-pre-register")
-                            .about("Only for pre-register in .bit process"))
+                       Arg::with_name("since-for-first-cell")
+                            .long("since-for-first-cell")
+                            .takes_value(true)
+                            .default_value("0")
+                            .validator(|input| FromStrParser::<u64>::default().validate(input))
+                            .about("Set the since for the first input cell, default for 0"),
+                    )
                     .arg(
                         Arg::with_name("type-id")
                             .long("type-id")
@@ -592,7 +596,7 @@ impl<'a> WalletSubCommand<'a> {
             to_data,
             is_type_id,
             skip_check_to_address,
-            is_pre_register,
+            since_for_first_cell,
             outter_witness,
             type_script_opt,
             lock_script_opt,
@@ -868,7 +872,7 @@ impl<'a> WalletSubCommand<'a> {
                 &genesis_info,
                 cell_deps_trx_vec_clone,
                 skip_check,
-                is_pre_register,
+                since_for_first_cell,
             )?;
             for info in &infos[1..] {
                 let cell_deps_trx_vec_clone = cell_deps_trx_vec.clone();
@@ -879,7 +883,7 @@ impl<'a> WalletSubCommand<'a> {
                     &genesis_info,
                     cell_deps_trx_vec_clone,
                     skip_check,
-                    false,
+                    0,
                 )?;
             }
         }
@@ -1125,6 +1129,8 @@ impl<'a> CliSubCommand for WalletSubCommand<'a> {
                     .from_matches_vec(m, "sighash-address")?;
                 let require_first_n: u8 =
                     FromStrParser::<u8>::default().from_matches(m, "require-first-n")?;
+                let since_for_first_cell: u64 =
+                    FromStrParser::<u64>::default().from_matches(m, "since-for-first-cell")?;
                 let threshold: u8 = FromStrParser::<u8>::default().from_matches(m, "threshold")?;
                 
                 let only_digest: bool = m.is_present("only-digest");
@@ -1147,7 +1153,7 @@ impl<'a> CliSubCommand for WalletSubCommand<'a> {
                     to_data: Some(to_data),
                     is_type_id: m.is_present("type-id"),
                     skip_check_to_address: m.is_present("skip-check-to-address"),
-                    is_pre_register: m.is_present("is-pre-register"),
+                    since_for_first_cell: since_for_first_cell,
                     outter_witness: outter_witness,
                     type_script_opt: Some(type_script_opt),
                     lock_script_opt: Some(lock_script_opt),
@@ -1464,7 +1470,7 @@ pub struct TransferWithOutterWitnessArgs {
     pub to_data: Option<Bytes>,
     pub is_type_id: bool,
     pub skip_check_to_address: bool,
-    pub is_pre_register: bool,
+    pub since_for_first_cell: u64,
     pub outter_witness: Vec<Bytes>,
     pub type_script_opt: Option<Bytes>,
     pub lock_script_opt: Option<Bytes>,
