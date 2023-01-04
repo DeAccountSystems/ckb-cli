@@ -10,7 +10,7 @@ use ckb_types::{
     prelude::*,
     H160, H256,
 };
-use std::collections::{HashMap, HashSet, hash_map::DefaultHasher};
+use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 
 use crate::constants::{MULTISIG_TYPE_HASH, SECP_SIGNATURE_SIZE, SIGHASH_TYPE_HASH};
@@ -200,10 +200,11 @@ impl TxHelper {
             .build()
     }
     pub fn add_header_deps(&mut self, header_deps: Vec<H256> ) {
-        let mut header_deps_byte32 = Vec<Byte32>
-        for header_dep in header_deps {
-            
-        }
+        //transfer h256 to byte32
+        let mut header_deps_byte32 = vec!();
+        for hd in header_deps {
+            header_deps_byte32.push(Byte32::new(hd.0))
+        };
         self.transaction = self
             .transaction
             .as_advanced_builder()

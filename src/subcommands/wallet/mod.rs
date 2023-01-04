@@ -965,7 +965,9 @@ impl<'a> WalletSubCommand<'a> {
         }
 
         // add header deps
-        helper.add_header_deps(header_deps_vec)?;
+        if header_deps_vec.len() != 0 {
+            helper.add_header_deps(header_deps_vec);
+        }
         
         let signer = if let Some(from_privkey) = from_privkey {
             get_privkey_signer(from_privkey)
