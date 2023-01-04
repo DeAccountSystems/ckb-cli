@@ -10,7 +10,7 @@ use ckb_types::{
     prelude::*,
     H160, H256,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, hash_map::DefaultHasher};
 use std::convert::TryInto;
 
 use crate::constants::{MULTISIG_TYPE_HASH, SECP_SIGNATURE_SIZE, SIGHASH_TYPE_HASH};
@@ -199,7 +199,17 @@ impl TxHelper {
             .output_data(data.pack())
             .build()
     }
-
+    pub fn add_header_deps(&mut self, header_deps: Vec<H256> ) {
+        let mut header_deps_byte32 = Vec<Byte32>
+        for header_dep in header_deps {
+            
+        }
+        self.transaction = self
+            .transaction
+            .as_advanced_builder()
+            .set_header_deps(header_deps_byte32)
+            .build();   
+    }
     pub fn add_signature(&mut self, lock_arg: Bytes, signature: Bytes) -> Result<bool, String> {
         if lock_arg.len() != 20 && lock_arg.len() != 28 {
             return Err(format!(

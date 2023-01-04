@@ -168,6 +168,7 @@ impl<'a> WalletSubCommand<'a> {
                     .arg(arg::from_locked_address())
                     .arg(arg::to_address().required(true))
                     .arg(arg::to_data())
+                    .arg(arg::header_deps())
                     .arg(arg::cell_deps())
                     .arg(arg::cell_input())
                     .arg(arg::to_data_path())
@@ -602,6 +603,7 @@ impl<'a> WalletSubCommand<'a> {
             lock_script_opt,
             cell_deps_trx_vec,
             cell_input_trx_vec,
+            header_deps_vec,
             tx_json_path_opt,
             sighash_addresses,
             require_first_n,
@@ -962,6 +964,9 @@ impl<'a> WalletSubCommand<'a> {
             helper.add_output(change_output, Bytes::default());
         }
 
+        // add header deps
+        helper.add_header_deps(header_deps_vec)?;
+        
         let signer = if let Some(from_privkey) = from_privkey {
             get_privkey_signer(from_privkey)
         } else {
@@ -1111,7 +1116,8 @@ impl<'a> CliSubCommand for WalletSubCommand<'a> {
                 let type_script_opt = get_type_script(m)?;
                 let lock_script_opt = get_lock_script(m)?;
                 let outter_witness = get_outter_witness(m)?;
-                // let cell_deps_vec: Vec<H256> = FixedHashParser::<H256>::default().from_matches_vec(m, "cell-deps")?;
+                // let header_deps_v: Vec<Byte32> = 
+                let header_deps_vec: Vec<H256> = FixedHashParser::<H256>::default().from_matches_vec(m, "header-deps")?;
                 let cell_deps_vec = OutPointParser.from_matches_vec(m, "cell-deps")?;
                 // let cell_input_opt: Option<H256> = FixedHashParser::<H256>::default().from_matches_opt(m, "cell-inputs", false)?;
                 let cell_input_vec = OutPointParser.from_matches_vec(m, "cell-inputs")?;
@@ -1159,6 +1165,7 @@ impl<'a> CliSubCommand for WalletSubCommand<'a> {
                     lock_script_opt: Some(lock_script_opt),
                     cell_deps_trx_vec: cell_deps_vec,
                     cell_input_trx_vec: cell_input_vec,
+                    header_deps_vec: header_deps_vec,
                     tx_json_path_opt: tx_json_path_opt,
                     sighash_addresses: sighash_addresses,
                     require_first_n: require_first_n,
@@ -1476,6 +1483,7 @@ pub struct TransferWithOutterWitnessArgs {
     pub lock_script_opt: Option<Bytes>,
     pub cell_deps_trx_vec: Vec<OutPoint>,
     pub cell_input_trx_vec: Vec<OutPoint>,
+    pub header_deps_vec: Vec<H256>,
     pub tx_json_path_opt: Option<String>,
     pub sighash_addresses: Vec<Address>,
     pub require_first_n: u8,

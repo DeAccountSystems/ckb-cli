@@ -119,6 +119,15 @@ pub fn to_data<'a>() -> Arg<'a> {
         .validator(|input| HexParser.validate(input))
         .about("Hex data store in target cell (optional)")
 }
+pub fn header_deps<'a>() -> Arg<'a> {
+    Arg::with_name("header-deps")
+        .long("header-deps")
+        .takes_value(true)
+        .multiple(true)
+        .validator(|input| FixedHashParser::<H256>::default().validate(input))
+        .about("Trx hash which header-deps pointed to (optional)")
+}
+
 pub fn cell_deps<'a>() -> Arg<'a> {
     Arg::with_name("cell-deps")
         .long("cell-deps")
