@@ -11,7 +11,7 @@ use ckb_sdk::{
     wallet::{zeroize_privkey, MasterPrivKey},
     Address, AddressPayload, AddressType, CodeHashIndex, HumanCapacity, NetworkType, OldAddress,
 };
-use ckb_types::{packed::OutPoint, prelude::*, H160, H256, bytes::Bytes};
+use ckb_types::{bytes::Bytes, packed::OutPoint, prelude::*, H160, H256};
 use clap::ArgMatches;
 use faster_hex::hex_decode;
 use url::Url;

@@ -1,9 +1,9 @@
 mod index;
 
 use std::collections::{HashMap, HashSet};
-use std::path::{PathBuf};
 use std::fs;
 use std::io::Write;
+use std::path::PathBuf;
 use std::str::FromStr;
 
 use ckb_jsonrpc_types::JsonBytes;
@@ -27,14 +27,14 @@ use crate::plugin::{KeyStoreHandler, PluginManager, SignTarget};
 use crate::utils::{
     arg,
     arg_parser::{
-        AddressParser, ArgParser, CapacityParser, FixedHashParser, FromStrParser,
-        PrivkeyPathParser, PrivkeyWrapper, OutterWitnessParser, OutPointParser,
+        AddressParser, ArgParser, CapacityParser, FixedHashParser, FromStrParser, OutPointParser,
+        OutterWitnessParser, PrivkeyPathParser, PrivkeyWrapper,
     },
     index::{with_db, IndexController},
     other::{
-        check_capacity, get_address, get_arg_value, get_live_cell_with_cache,
-        get_max_mature_number, get_network_type, get_privkey_signer, get_to_data, is_mature, get_outter_witness, get_type_script, get_lock_script,
-        read_password, sync_to_tip,
+        check_capacity, get_address, get_arg_value, get_live_cell_with_cache, get_lock_script,
+        get_max_mature_number, get_network_type, get_outter_witness, get_privkey_signer,
+        get_to_data, get_type_script, is_mature, read_password, sync_to_tip,
     },
 };
 use ckb_chain_spec::consensus::TYPE_ID_CODE_HASH;
@@ -44,8 +44,8 @@ use ckb_sdk::{
         DAO_TYPE_HASH, MIN_SECP_CELL_CAPACITY, MULTISIG_TYPE_HASH, ONE_CKB, SIGHASH_TYPE_HASH,
     },
     wallet::DerivationPath,
-    Address, AddressPayload, GenesisInfo, HttpRpcClient, HumanCapacity, MultisigConfig, SignerFn,
-    Since, SinceType, TxHelper, SECP256K1, NetworkType, CodeHashIndex,
+    Address, AddressPayload, CodeHashIndex, GenesisInfo, HttpRpcClient, HumanCapacity,
+    MultisigConfig, NetworkType, SignerFn, Since, SinceType, TxHelper, SECP256K1,
 };
 pub use index::start_index_thread;
 
@@ -723,13 +723,13 @@ impl<'a> WalletSubCommand<'a> {
         // for multi sign
         if threshold > 0 {
             let sighash_addresses = sighash_addresses
-            .into_iter()
-            .map(|address| address.payload().clone())
-            .collect::<Vec<_>>();
+                .into_iter()
+                .map(|address| address.payload().clone())
+                .collect::<Vec<_>>();
             let cfg = MultisigConfig::new_with(sighash_addresses, require_first_n, threshold)?;
             helper.add_multisig_config(cfg);
         }
-        
+
         let from_lock_arg = H160::from_slice(from_address.payload().args().as_ref()).unwrap();
         let mut path_map: HashMap<H160, DerivationPath> = Default::default();
         let (change_address_payload, change_path) =
@@ -793,14 +793,12 @@ impl<'a> WalletSubCommand<'a> {
 
         if cell_input_trx_vec.len() > 0 {
             for tmp in cell_input_trx_vec {
-                let live_cell = self.with_db(|db| {
-                    db.get_live_cell_by_out_point(tmp)
-                })?;
+                let live_cell = self.with_db(|db| db.get_live_cell_by_out_point(tmp))?;
                 from_capacity += live_cell.capacity;
                 infos.push(live_cell);
             }
         }
-        
+
         fn enough_capacity(from_capacity: u64, to_capacity: u64, tx_fee: u64) -> bool {
             if from_capacity < to_capacity + tx_fee {
                 false
@@ -888,8 +886,7 @@ impl<'a> WalletSubCommand<'a> {
                     0,
                 )?;
             }
-        }
-        else {
+        } else {
             for info in &infos {
                 helper.add_input(
                     info.out_point(),
@@ -922,37 +919,40 @@ impl<'a> WalletSubCommand<'a> {
                     .build(),
             )
         } else {
-            if let Some(type_script_opt) = type_script_opt { 
+            if let Some(type_script_opt) = type_script_opt {
                 if type_script_opt.len() > 0 {
-                    Some(Script::new_unchecked(type_script_opt)) 
+                    Some(Script::new_unchecked(type_script_opt))
+                } else {
+                    None
                 }
-                else { None}
-                } 
-            else { None }
+            } else {
+                None
+            }
             // None
         };
 
-        let lock_script = if let Some(lock_script_opt) = lock_script_opt { 
+        let lock_script = if let Some(lock_script_opt) = lock_script_opt {
             if lock_script_opt.len() > 0 {
-                Some(Script::new_unchecked(lock_script_opt)) 
+                Some(Script::new_unchecked(lock_script_opt))
+            } else {
+                None
             }
-            else { None}
-        } 
-        else { None };
+        } else {
+            None
+        };
 
         let to_output = if let Some(lock_script) = lock_script {
             CellOutput::new_builder()
-            .capacity(Capacity::shannons(to_capacity).pack())
-            .lock(lock_script)
-            .type_(ScriptOpt::new_builder().set(type_script).build())
-            .build()
-        }
-        else {
+                .capacity(Capacity::shannons(to_capacity).pack())
+                .lock(lock_script)
+                .type_(ScriptOpt::new_builder().set(type_script).build())
+                .build()
+        } else {
             CellOutput::new_builder()
-            .capacity(Capacity::shannons(to_capacity).pack())
-            .lock(to_address.payload().into())
-            .type_(ScriptOpt::new_builder().set(type_script).build())
-            .build()
+                .capacity(Capacity::shannons(to_capacity).pack())
+                .lock(to_address.payload().into())
+                .type_(ScriptOpt::new_builder().set(type_script).build())
+                .build()
         };
 
         helper.add_output(to_output, to_data);
@@ -968,7 +968,7 @@ impl<'a> WalletSubCommand<'a> {
         if header_deps_vec.len() != 0 {
             helper.add_header_deps(header_deps_vec);
         }
-        
+
         let signer = if let Some(from_privkey) = from_privkey {
             get_privkey_signer(from_privkey)
         } else {
@@ -982,14 +982,22 @@ impl<'a> WalletSubCommand<'a> {
                 password,
             )
         };
-        
+
         let outter_witness_copy = outter_witness.clone();
-        for (lock_arg, signature) in
-            helper.sign_inputs_with_outter_witness(signer, &mut get_live_cell_fn, skip_check, outter_witness, only_digest)?
-        {
+        for (lock_arg, signature) in helper.sign_inputs_with_outter_witness(
+            signer,
+            &mut get_live_cell_fn,
+            skip_check,
+            outter_witness,
+            only_digest,
+        )? {
             helper.add_signature(lock_arg, signature)?;
         }
-        let tx = helper.build_tx_with_outter_witness(&mut get_live_cell_fn, skip_check, outter_witness_copy)?;
+        let tx = helper.build_tx_with_outter_witness(
+            &mut get_live_cell_fn,
+            skip_check,
+            outter_witness_copy,
+        )?;
         let mut should_send_tx = 1;
         if let Some(tx_json_path_opt) = tx_json_path_opt {
             let tx_path = tx_json_path_opt.as_str();
@@ -1002,7 +1010,7 @@ impl<'a> WalletSubCommand<'a> {
                 file.write_all(content.as_bytes())
                     .map_err(|err| err.to_string())?;
             }
-        } 
+        }
         if should_send_tx == 1 {
             // let outputs_validator = if is_type_id || skip_check || skip_check_to_address {
             //     Some(json_types::OutputsValidator::Passthrough)
@@ -1118,18 +1126,19 @@ impl<'a> CliSubCommand for WalletSubCommand<'a> {
                 let type_script_opt = get_type_script(m)?;
                 let lock_script_opt = get_lock_script(m)?;
                 let outter_witness = get_outter_witness(m)?;
-                // let header_deps_v: Vec<Byte32> = 
-                let header_deps_vec: Vec<H256> = FixedHashParser::<H256>::default().from_matches_vec(m, "header-deps")?;
+                // let header_deps_v: Vec<Byte32> =
+                let header_deps_vec: Vec<H256> =
+                    FixedHashParser::<H256>::default().from_matches_vec(m, "header-deps")?;
                 let cell_deps_vec = OutPointParser.from_matches_vec(m, "cell-deps")?;
                 // let cell_input_opt: Option<H256> = FixedHashParser::<H256>::default().from_matches_opt(m, "cell-inputs", false)?;
                 let cell_input_vec = OutPointParser.from_matches_vec(m, "cell-inputs")?;
-                
+
                 let tx_json_path = m.value_of("tx-json-path").unwrap_or_else(|| "");
                 // if tx_json_path.len() > 0 && Path::new(tx_json_path).exists() {
                 //     return Err(format!("File exists: {}", tx_json_path));
                 // }
                 let tx_json_path_opt = Some(tx_json_path.to_string());
-                
+
                 let network = get_network_type(self.rpc_client)?;
                 let sighash_addresses: Vec<Address> = AddressParser::default()
                     .set_network(network)
@@ -1140,8 +1149,9 @@ impl<'a> CliSubCommand for WalletSubCommand<'a> {
                 let since_for_first_cell: u64 =
                     FromStrParser::<u64>::default().from_matches(m, "since-for-first-cell")?;
                 let threshold: u8 = FromStrParser::<u8>::default().from_matches(m, "threshold")?;
-                
+
                 let only_digest: bool = m.is_present("only-digest");
+                let _no_password: bool = m.is_present("no-password");
 
                 let args = TransferWithOutterWitnessArgs {
                     privkey_path: m.value_of("privkey-path").map(|s| s.to_string()),
@@ -1180,7 +1190,6 @@ impl<'a> CliSubCommand for WalletSubCommand<'a> {
                 }
                 let tx_hash: H256 = tx.hash().unpack();
                 Ok(Output::new_output(tx_hash))
-                
             }
             ("transfer", Some(m)) => {
                 let to_data = get_to_data(m)?;

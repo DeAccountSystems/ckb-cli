@@ -186,6 +186,8 @@ impl PluginManager {
         &self.callbacks
     }
     pub fn actived_keystore(&self) -> Option<(&Plugin, &PluginConfig, bool)> {
+        log::debug!("actived_keystore");
+        log::debug!("actived_keystore {:?}", self.keystores);
         self.keystores
             .iter()
             .filter_map(|name| {

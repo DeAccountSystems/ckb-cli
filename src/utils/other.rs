@@ -29,7 +29,8 @@ use colored::Colorize;
 use rpassword::prompt_password_stdout;
 
 use super::arg_parser::{
-    AddressParser, ArgParser, FixedHashParser, HexParser, PrivkeyWrapper, PubkeyHexParser, OutterWitnessParser,
+    AddressParser, ArgParser, FixedHashParser, HexParser, OutterWitnessParser, PrivkeyWrapper,
+    PubkeyHexParser,
 };
 use super::index::{IndexController, IndexRequest, IndexThreadState};
 use crate::plugin::{KeyStoreHandler, SignTarget};
@@ -294,7 +295,8 @@ pub fn get_outter_witness(m: &ArgMatches) -> Result<Vec<Bytes>, String> {
     //let to_data_opt: Option<Bytes> = HexParser.from_matches_opt(m, "outter-witness", false)?;
     //let tx_hashes: Vec<H256> =
     //                FixedHashParser::<H256>::default().from_matches_vec(m, "tx-hash")?;
-    let outter_wt: Vec<Bytes> = OutterWitnessParser::<Bytes>::default().from_matches_vec(m, "outter-witness")?;
+    let outter_wt: Vec<Bytes> =
+        OutterWitnessParser::<Bytes>::default().from_matches_vec(m, "outter-witness")?;
     Ok(outter_wt)
     // match extra_wt {
     //     Some(data) => Ok(data),
@@ -316,7 +318,7 @@ pub fn get_type_script(m: &ArgMatches) -> Result<Bytes, String> {
     let type_script_opt: Option<Bytes> = HexParser.from_matches_opt(m, "type-script", false)?;
     match type_script_opt {
         Some(data) => Ok(data),
-        None => Ok(Bytes::new())
+        None => Ok(Bytes::new()),
     }
 }
 
@@ -324,7 +326,7 @@ pub fn get_lock_script(m: &ArgMatches) -> Result<Bytes, String> {
     let lock_script_opt: Option<Bytes> = HexParser.from_matches_opt(m, "lock-script", false)?;
     match lock_script_opt {
         Some(data) => Ok(data),
-        None => Ok(Bytes::new())
+        None => Ok(Bytes::new()),
     }
 }
 

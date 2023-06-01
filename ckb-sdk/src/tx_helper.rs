@@ -2,7 +2,7 @@ use ckb_hash::{blake2b_256, new_blake2b};
 use ckb_jsonrpc_types as rpc_types;
 use ckb_types::{
     bytes::{Bytes, BytesMut},
-    core::{ScriptHashType, TransactionBuilder, TransactionView, DepType},
+    core::{DepType, ScriptHashType, TransactionBuilder, TransactionView},
     h256,
     packed::{
         self, Byte32, CellDep, CellInput, CellOutput, OutPoint, Script, Transaction, WitnessArgs,
@@ -80,7 +80,6 @@ impl TxHelper {
         self.multisig_configs.clear()
     }
 
-
     pub fn add_input_with_cell_deps<F: FnMut(OutPoint, bool) -> Result<CellOutput, String>>(
         &mut self,
         out_point: OutPoint,
@@ -125,13 +124,14 @@ impl TxHelper {
             }
         }
         for tmp_trx in deps_trx {
-            cell_deps.insert(CellDep::new_builder()
-                .out_point(tmp_trx)
-                .dep_type(DepType::Code.into())
-                // .dep_type(DepType::DepGroup.into())
-                .build());
-        } 
-        
+            cell_deps.insert(
+                CellDep::new_builder()
+                    .out_point(tmp_trx)
+                    .dep_type(DepType::Code.into())
+                    // .dep_type(DepType::DepGroup.into())
+                    .build(),
+            );
+        }
 
         self.transaction = self
             .transaction
@@ -199,17 +199,17 @@ impl TxHelper {
             .output_data(data.pack())
             .build()
     }
-    pub fn add_header_deps(&mut self, header_deps: Vec<H256> ) {
+    pub fn add_header_deps(&mut self, header_deps: Vec<H256>) {
         //transfer h256 to byte32
-        let mut header_deps_byte32 = vec!();
+        let mut header_deps_byte32 = vec![];
         for hd in header_deps {
             header_deps_byte32.push(Byte32::new(hd.0))
-        };
+        }
         self.transaction = self
             .transaction
             .as_advanced_builder()
             .set_header_deps(header_deps_byte32)
-            .build();   
+            .build();
     }
     pub fn add_signature(&mut self, lock_arg: Bytes, signature: Bytes) -> Result<bool, String> {
         if lock_arg.len() != 20 && lock_arg.len() != 28 {
@@ -299,7 +299,10 @@ impl TxHelper {
         for ((code_hash, lock_arg), idxs) in
             self.input_group(get_live_cell, skip_check)?.into_iter()
         {
-            if code_hash != SIGHASH_TYPE_HASH.pack() && code_hash != MULTISIG_TYPE_HASH.pack() && !skip_check{
+            if code_hash != SIGHASH_TYPE_HASH.pack()
+                && code_hash != MULTISIG_TYPE_HASH.pack()
+                && !skip_check
+            {
                 continue;
             }
 
@@ -414,7 +417,6 @@ impl TxHelper {
     where
         C: FnMut(OutPoint, bool) -> Result<CellOutput, String>,
     {
-
         let all_sighash_lock_args = self
             .multisig_configs
             .iter()
@@ -461,7 +463,6 @@ impl TxHelper {
                     only_digest,
                 )?;
                 signatures.insert(lock_arg, signature);
-
             }
         }
         Ok(signatures)
@@ -808,8 +809,7 @@ pub fn build_signature<
     println!("{} digest-message: {}", d_msg_type, message);
     if !only_digest {
         signer(&message, &new_tx.data().into()).map(|data| Bytes::from(data.to_vec()))
-    }
-    else {
+    } else {
         Ok(Bytes::new())
     }
 }

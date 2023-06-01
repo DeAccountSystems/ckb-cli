@@ -139,9 +139,9 @@ impl CliSubCommand for MoleculeSubCommand {
                 let output_type = m.value_of("output-type").unwrap();
                 let content_as_strr = if let Some(json_obj) = json_obj {
                     json_obj.to_string()
-                }
-                else {
-                    let json_path: PathBuf = FilePathParser::new(true).from_matches(m, "json-path")?;
+                } else {
+                    let json_path: PathBuf =
+                        FilePathParser::new(true).from_matches(m, "json-path")?;
                     let content = fs::read_to_string(json_path).map_err(|err| err.to_string())?;
                     content.clone().to_string()
                 };
@@ -153,9 +153,9 @@ impl CliSubCommand for MoleculeSubCommand {
                     "OutPoint" => {
                         encode_from_json::<packed::OutPoint, json_types::OutPoint>(content_as_str)
                     }
-                    "CellInput" => encode_from_json::<packed::CellInput, json_types::CellInput>(
-                        content_as_str,
-                    ),
+                    "CellInput" => {
+                        encode_from_json::<packed::CellInput, json_types::CellInput>(content_as_str)
+                    }
                     "CellOutput" => encode_from_json::<packed::CellOutput, json_types::CellOutput>(
                         content_as_str,
                     ),
@@ -170,22 +170,16 @@ impl CliSubCommand for MoleculeSubCommand {
                             content_as_str,
                         )
                     }
-                    "RawHeader" => {
-                        encode_from_json::<packed::RawHeader, RawHeader>(content_as_str)
-                    }
+                    "RawHeader" => encode_from_json::<packed::RawHeader, RawHeader>(content_as_str),
                     "Header" => {
                         encode_from_json::<packed::Header, json_types::Header>(content_as_str)
                     }
                     "UncleBlock" => encode_from_json::<packed::UncleBlock, json_types::UncleBlock>(
                         content_as_str,
                     ),
-                    "Block" => {
-                        encode_from_json::<packed::Block, json_types::Block>(content_as_str)
-                    }
+                    "Block" => encode_from_json::<packed::Block, json_types::Block>(content_as_str),
                     "CellbaseWitness" => {
-                        encode_from_json::<packed::CellbaseWitness, CellbaseWitness>(
-                            content_as_str,
-                        )
+                        encode_from_json::<packed::CellbaseWitness, CellbaseWitness>(content_as_str)
                     }
                     "WitnessArgs" => {
                         encode_from_json::<packed::WitnessArgs, WitnessArgs>(content_as_str)

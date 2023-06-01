@@ -91,9 +91,12 @@ impl<'a> TxSubCommand<'a> {
         let arg_skip_check = Arg::with_name("skip-check")
             .long("skip-check")
             .about("Send transaction without any check, be cautious to use this flag");
-        let arg_only_digest= Arg::with_name("only-digest")
+        let arg_only_digest = Arg::with_name("only-digest")
             .long("only-digest")
             .about("Only output digest of the tx");
+        let arg_no_password = Arg::with_name("no-password")
+            .long("no-password")
+            .about("Do not ask password for private key");
 
         App::new(name)
             .about("Handle common sighash/multisig transaction")
@@ -216,7 +219,8 @@ impl<'a> TxSubCommand<'a> {
                             .about("Sign and add signatures"),
                     )
                     .arg(arg_skip_check.clone())
-                    .arg(arg_only_digest.clone()),
+                    .arg(arg_only_digest.clone())
+                    .arg(arg_no_password.clone()),
                 App::new("send")
                     .about("Send multisig transaction")
                     .arg(arg_tx_file.clone())
@@ -471,16 +475,25 @@ impl<'a> CliSubCommand for TxSubCommand<'a> {
                     })
                     .transpose()?;
                 let skip_check: bool = m.is_present("skip-check");
-                
+
                 let only_digest: bool = m.is_present("only-digest");
+
+                let no_password: bool = m.is_present("no-password");
 
                 let signer = if let Some(privkey) = privkey_opt {
                     get_privkey_signer(privkey)
                 } else {
-                    let password = if self.plugin_mgr.keystore_require_password() {
-                        Some(read_password(false, None)?)
-                    } else {
+                    log::info!("privkey_opt is none");
+                    let password = if no_password {
                         None
+                    }else {
+                        if self.plugin_mgr.keystore_require_password() {
+                            log::info!("keystore_require_password is true");
+                            Some(read_password(false, None)?)
+                        } else {
+                            log::info!("keystore_require_password is false");
+                            None
+                        }
                     };
                     let account = account_opt.unwrap();
                     let keystore = self.plugin_mgr.keystore_handler();
@@ -501,7 +514,8 @@ impl<'a> CliSubCommand for TxSubCommand<'a> {
                 };
 
                 let signatures = modify_tx_file(&tx_file, network, |helper| {
-                    let signatures = helper.sign_inputs(signer, get_live_cell, skip_check, only_digest)?;
+                    let signatures =
+                        helper.sign_inputs(signer, get_live_cell, skip_check, only_digest)?;
                     if m.is_present("add-signatures") {
                         for (lock_arg, signature) in signatures.clone() {
                             helper.add_signature(lock_arg, signature)?;
@@ -518,6 +532,8 @@ impl<'a> CliSubCommand for TxSubCommand<'a> {
                         })
                     })
                     .collect::<Vec<_>>();
+                log::info!("resp: {:02x?}", resp);
+
                 Ok(Output::new_output(resp))
             }
             ("send", Some(m)) => {
